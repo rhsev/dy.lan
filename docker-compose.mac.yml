@@ -1,0 +1,35 @@
+# Dylan - Mac/OrbStack Configuration
+
+services:
+  dylan:
+    build: .
+    container_name: dylan-dev
+    restart: unless-stopped
+
+    volumes:
+      # Mount current directory for live editing
+      - .:/app
+
+    ports:
+      # Access via http://localhost:8080
+      - "8080:80"
+
+    working_dir: /app
+
+    command: sh -c "bundle install && ruby server.rb"
+
+    environment:
+      - PORT=80
+      - RUBY_ENV=development
+# Usage:
+#   docker-compose -f docker-compose.mac.yml up
+#
+# Then visit: http://localhost:8080/dylan
+#
+# Edit plugins and reload:
+#   curl http://localhost:8080/dylan/reload
+#   (Note: reload is buggy, restart container instead)
+#
+# Test endpoints:
+#   curl http://localhost:8080/g/ruby -I
+#   curl http://localhost:8080/dylan/routes?format=json

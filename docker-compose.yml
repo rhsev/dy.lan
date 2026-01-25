@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  dylan:
+    image: dylan:1.0  # Use pre-built image
+    container_name: dylan
+    restart: unless-stopped
+
+    volumes:
+      - /volume1/docker/dylan/data:/app/data:rw
+
+    networks:
+      existing_macvlan:
+        ipv4_address: 192.168.1.252
+
+    environment:
+      - PORT=80
+      - RUBY_ENV=production
+
+networks:
+  existing_macvlan:
+    external: true
+    name: dockervlan

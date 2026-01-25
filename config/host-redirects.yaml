@@ -1,0 +1,31 @@
+# Host-based Redirects & Reverse Proxy
+#
+# Pattern: Ruby Regex matching hostname
+# Target: Target server URL (path will be appended automatically)
+# Type: 'redirect' (302, URL changes) or 'proxy' (transparent, URL stays)
+#
+# Examples:
+#   Redirect mode (default):
+#     Browser sees: syncthing.mi.lan → redirects to → http://192.168.1.118:8384
+#     URL in browser changes to show backend URL
+#
+#   Proxy mode (lightweight reverse proxy):
+#     Browser sees: nextcloud.lan (URL stays the same)
+#     Dylan forwards requests transparently to backend
+#
+# IMPORTANT - Proxy Mode Limitations:
+#   - Works well for simple services (Syncthing, monitoring tools, APIs)
+#   - NOT recommended for complex web applications (Nextcloud, GitLab, etc.)
+#   - No Host header rewriting, SSL termination, or WebSocket support
+#   - For complex apps, use redirect mode or a full reverse proxy (nginx/traefik)
+
+redirects:
+  - pattern: 'syncthing\.mi\.lan'
+    target: 'http://192.168.1.118:8384'
+    type: redirect  # URL changes in browser (default)
+    description: 'Syncthing Mac'
+
+  - pattern: 'nextcloud\.lan'
+    target: 'http://192.168.1.33:8082'
+    type: proxy  # URL stays as nextcloud.lan
+    description: 'Nextcloud privat'

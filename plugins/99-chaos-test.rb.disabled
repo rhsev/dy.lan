@@ -1,0 +1,54 @@
+# frozen_string_literal: true
+
+# Chaos Plugin - Test Dylan's Robustness
+#
+# This plugin intentionally misbehaves to test error handling:
+# - /chaos/timeout    - Sleeps for 2 seconds (triggers timeout)
+# - /chaos/error      - Raises an exception
+# - /chaos/nil        - Returns nil instead of Response
+# - /chaos/loop       - Infinite loop (triggers timeout)
+#
+# To enable: Rename to 99-chaos-test.rb (remove .disabled)
+# To test: curl http://localhost:8080/chaos/timeout
+
+class ChaosPlugin < Dylan::Plugin
+  pattern(%r{^/chaos/})
+
+  def call(host, path, request)
+    case path
+    when '/chaos/timeout'
+      # Sleep longer than the 500ms timeout
+      sleep 2
+      Dylan::Response.text("You shouldn't see this!")
+
+    when '/chaos/error'
+      # Raise an exception
+      raise "💥 Intentional crash for testing!"
+
+    when '/chaos/nil'
+      # Return nil (invalid - should return Response)
+      nil
+
+    when '/chaos/loop'
+      # Infinite loop - will trigger timeout
+      loop { Math.sqrt(rand) }
+
+    when '/chaos/ok'
+      # This one works fine
+      Dylan::Response.text("Chaos plugin is working correctly!")
+
+    else
+      Dylan::Response.text(<<~TEXT)
+        Chaos Plugin Test Endpoints:
+
+        GET /chaos/timeout  - Triggers timeout (2s sleep)
+        GET /chaos/error    - Raises exception
+        GET /chaos/nil      - Returns nil (invalid)
+        GET /chaos/loop     - Infinite loop
+        GET /chaos/ok       - Works correctly
+
+        Try hitting /chaos/error 5 times to trigger the circuit breaker!
+      TEXT
+    end
+  end
+end

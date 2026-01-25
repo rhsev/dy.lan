@@ -1,0 +1,28 @@
+version: "3.7"
+
+services:
+  network-keeper:
+    image: alpine:latest
+    command: tail -f /dev/null
+    container_name: network-keeper
+    restart: always
+    networks:
+      dockervlan:
+        ipv4_address: 192.168.1.253
+
+networks:
+  dockervlan:
+    name: dockervlan
+    driver: macvlan
+    driver_opts:
+      parent: ovs_eth2
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: "192.168.1.0/24"
+          # WARNUNG: Da wir hier keine ip_range einschränken, denkt Docker,
+          # es darf alles von .2 bis .254 nutzen.
+          # WICHTIG: Starte Container in diesem Netz NIEMALS ohne "ipv4_address",
+          # sonst klaut Docker IPs von anderen Geräten (TV, Handy, etc.)!
+          gateway: "192.168.1.1"
+        - subnet: "2a00:6020:b01d:9100::/64"

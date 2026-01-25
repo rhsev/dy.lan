@@ -1,0 +1,2 @@
+# Dylan Cron Jobs
+*/5 * * * * /app/scripts/monitor.sh > /proc/1/fd/1 2>&1

@@ -1,0 +1,16 @@
+# Dylan Runtime Configuration
+# Experimental Ruby 4.0 Features
+
+# Ruby::Box - Plugin Sandboxing (experimental, Ruby 4.0+)
+# Isolates each plugin in a separate execution context
+# Default: false (not yet stable)
+ruby_box:
+  enabled: false
+
+# ZJIT - Zero-overhead JIT Compiler (experimental, Ruby 4.0+)
+# Faster than YJIT for long-running processes
+# Default: false (requires --zjit flag or RUBY_ZJIT=1)
+zjit:
+  enabled: false
+
+# Future experimental features will be added here

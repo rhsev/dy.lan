@@ -1,0 +1,25 @@
+# Simple Redirects (keine Ruby-Kenntnisse nötig!)
+#
+# Domains: List of domains this config applies to (optional, omit for all domains)
+# Pattern: Ruby Regex als String
+# Target: Ziel-URL (${1}, ${2} etc. für Capture-Groups)
+# Priority: Optional (default: 50)
+
+domains: ['dy.lan']  # Only respond to these domains, omit for all
+
+redirects:
+  - pattern: '^/g/(.+)$'
+    target: 'https://google.com/search?q=${1}'
+    description: 'Google Search'
+
+  - pattern: '^/gh/(.+)$'
+    target: 'https://github.com/${1}'
+    description: 'GitHub Repository/User'
+
+  - pattern: '^/wiki/(.+)$'
+    target: 'https://en.wikipedia.org/wiki/${1}'
+    description: 'Wikipedia Artikel'
+
+  - pattern: '^/yt/(.+)$'
+    target: 'https://youtube.com/results?search_query=${1}'
+    description: 'YouTube Search'
