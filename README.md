@@ -1,5 +1,5 @@
 # dy.lan
-http router for local services and automation
+Server-side HTTP redirector for local networks with plugin-based automation
 
 Dylan turns local network URLs into workflows. Access services and trigger automations through simple URLs.
 
