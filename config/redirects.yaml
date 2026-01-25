@@ -23,3 +23,8 @@ redirects:
   - pattern: '^/yt/(.+)$'
     target: 'https://youtube.com/results?search_query=${1}'
     description: 'YouTube Search'
+
+  - pattern: '^/brett'
+    target: 'https://brettterpstra.com'
+    description: 'Brett Terpstra Blog'
+

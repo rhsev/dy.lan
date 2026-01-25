@@ -1,0 +1,6 @@
+# Don't copy these into Docker image
+.git
+.DS_Store
+*.md
+test_performance.rb
+docker-compose.yml

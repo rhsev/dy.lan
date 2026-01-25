@@ -5,27 +5,32 @@
 # Type: 'redirect' (302, URL changes) or 'proxy' (transparent, URL stays)
 #
 # Examples:
+#   
 #   Redirect mode (default):
-#     Browser sees: syncthing.mi.lan → redirects to → http://192.168.1.118:8384
+#     Browser sees: nextcloud.lan → redirects to → http://192.168.1.33:8082
 #     URL in browser changes to show backend URL
 #
-#   Proxy mode (lightweight reverse proxy):
-#     Browser sees: nextcloud.lan (URL stays the same)
+#   Proxy mode:
+#     Browser sees: syncthing.mi.lan (URL stays the same)
 #     Dylan forwards requests transparently to backend
-#
-# IMPORTANT - Proxy Mode Limitations:
-#   - Works well for simple services (Syncthing, monitoring tools, APIs)
-#   - NOT recommended for complex web applications (Nextcloud, GitLab, etc.)
-#   - No Host header rewriting, SSL termination, or WebSocket support
-#   - For complex apps, use redirect mode or a full reverse proxy (nginx/traefik)
 
 redirects:
   - pattern: 'syncthing\.mi\.lan'
     target: 'http://192.168.1.118:8384'
-    type: redirect  # URL changes in browser (default)
+    type: proxy   # URL stays as Syncthing
     description: 'Syncthing Mac'
+
+  - pattern: 'home\.lan'
+    target: 'http://192.168.1.33:5210'
+    type: proxy   
+    description: 'Home'
 
   - pattern: 'nextcloud\.lan'
     target: 'http://192.168.1.33:8082'
-    type: proxy  # URL stays as nextcloud.lan
+    type: redirect  
     description: 'Nextcloud privat'
+
+  - pattern: 'dt\.lan'
+    target: 'http://192.168.1.33:5005'
+    type: redirect  
+    description: 'Devonthink WebDav'
