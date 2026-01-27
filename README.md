@@ -125,8 +125,6 @@ For HTTPS or complex routing, use Caddy or Traefik in front of Dylan.
 
 **Shared as-is.** This project was built to solve specific friction in personal automation workflows. The code is designed to be simple, transparent, and easy to extend with plugins.
 
-**No active support.** Issues and pull requests are currently disabled for now. 
-
 **License:** MIT
 
 ---
