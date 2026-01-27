@@ -40,7 +40,7 @@ docker-compose up -d
 
 Access the dashboard at `http://localhost:8080/dylan`
 
-For production deployment with dedicated IP (macvlan), see [Installation Guide](docs/INSTALL.md).
+For production deployment with dedicated IP (macvlan), see [Deployment](docs/DEPLOYMENT.md).
 
 ---
 
