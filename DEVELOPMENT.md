@@ -836,4 +836,4 @@ end
 
 ## Version
 
-**Dylan 1.0** - First release of Ruby 4.0 async HTTP router with enterprise robustness features.
+**Dylan 1.0** - First release of Ruby 4.0 async HTTP router
