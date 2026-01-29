@@ -1,0 +1,15 @@
+# Milan Connect Configuration
+# Dylan plugin for remote script execution on macOS
+
+milan:
+  enabled: true
+
+  # Milan agents (name -> URL)
+  agents:
+    mini: "http://192.168.1.118:8080"   # Mac Mini
+    book: "http://192.168.1.188:8080"   # MacBook
+
+  # Tailscale example:
+  # agents:
+  #   mini: "http://100.64.1.10:8080"
+  #   book: "http://100.64.1.11:8080"
