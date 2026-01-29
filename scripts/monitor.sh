@@ -6,11 +6,18 @@ export LC_ALL=C.UTF-8
 # Am Anfang vom Script als Config-Variable
 NTFY_TOPIC="mytopic"  # Change to your ntfy.sh topic
 
-# Define hosts to monitor
+# Define hosts to monitor (ping check)
 declare -A hosts=(
   ["CachyOS VM"]="192.168.1.152"
   ["Fedora"]="192.168.1.73"
   ["Steckdose Bad"]="192.168.1.55"
+)
+
+# Define services to monitor (port check)
+# Format: ["Name"]="host:port"
+declare -A services=(
+  ["Milan Mini"]="192.168.1.118:8080"
+  ["Milan Book"]="192.168.1.188:8080"
 )
 
 # File paths
@@ -25,6 +32,13 @@ get_last_status() {
   fi
 }
 
+# Function: Check if port is open
+check_port() {
+  local host="$1"
+  local port="$2"
+  timeout 2 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null
+}
+
 # HTML header
 cat > "$OUTPUT" << 'EOF'
 <!DOCTYPE html>
@@ -34,34 +48,36 @@ cat > "$OUTPUT" << 'EOF'
   <meta http-equiv='refresh' content='30'>
   <title>Netzwerk Monitor</title>
   <style>
-    body { 
-      font-family: Arial, sans-serif; 
-      margin: 20px; 
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
       background-color: #f5f5f5;
     }
-    h1 { color: #333; }
-    table { 
-      border-collapse: collapse; 
-      width: 100%; 
+    h1, h2 { color: #333; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
       background-color: white;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
     }
-    th, td { 
-      border: 1px solid #ddd; 
-      padding: 12px; 
-      text-align: left; 
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
     }
-    th { 
-      background-color: #4CAF50; 
-      color: white; 
+    th {
+      background-color: #4CAF50;
+      color: white;
     }
     tr:hover { background-color: #f5f5f5; }
   </style>
 </head>
 <body>
 <h1>Netzwerk Monitor</h1>
+<h2>Hosts</h2>
 <table>
-<tr><th>Status</th><th>Service</th><th>IP</th></tr>
+<tr><th>Status</th><th>Name</th><th>IP</th></tr>
 EOF
 
 # Variable for new status file
@@ -96,11 +112,50 @@ for name in "${!hosts[@]}"; do
   fi
 done
 
+# Close hosts table, start services section
+cat >> "$OUTPUT" << 'EOF'
+</table>
+<h2>Services</h2>
+<table>
+<tr><th>Status</th><th>Name</th><th>Address</th></tr>
+EOF
+
+# Check services (port check)
+for name in "${!services[@]}"; do
+  addr="${services[$name]}"
+  host="${addr%:*}"
+  port="${addr#*:}"
+
+  # Read last status
+  last_status=$(get_last_status "$addr")
+
+  # Check port
+  if check_port "$host" "$port"; then
+    current_status="online"
+    echo "<tr><td>&#x1F7E2; Online</td><td>$name</td><td>$addr</td></tr>" >> "$OUTPUT"
+  else
+    current_status="offline"
+    echo "<tr><td>&#x1F534; OFFLINE</td><td>$name</td><td>$addr</td></tr>" >> "$OUTPUT"
+  fi
+
+  # Collect status
+  new_status+="$addr:$current_status"$'\n'
+
+  # Notify on status change
+  if [[ "$last_status" != "$current_status" ]]; then
+    if [[ "$current_status" == "offline" ]]; then
+      curl -s -d "$name ($addr) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+    else
+      curl -s -d "$name ($addr) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+    fi
+  fi
+done
+
 # HTML footer
 cat >> "$OUTPUT" << 'EOF'
 </table>
 <p style="color: #666; font-size: 12px;">
-Letzte Aktualisierung: 
+Letzte Aktualisierung:
 EOF
 date >> "$OUTPUT"
 echo "</p></body></html>" >> "$OUTPUT"
