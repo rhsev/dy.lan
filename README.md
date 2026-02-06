@@ -1,21 +1,18 @@
 # dy.lan
+
 Server-side HTTP redirector for local networks with plugin-based automation
 
-Dylan turns local network URLs into workflows. Access services and trigger automations through simple URLs.
-
 ---
-
 ## What is Dylan?
 
-Dylan is a lightweight HTTP router designed for local networks. It acts as a central entry point that translates URLs into actions - whether that's accessing a service, triggering an automation, or redirecting to an app-specific deep link.
+Dylan turns local network URLs into workflows. 
 
-Instead of remembering `192.168.1.73:8384`, you access `http://sync.lan`.  
-Instead of complex scripts, you use `http://dy.lan/n/meeting` to search your notes.
+Dylan is designed for local networks. It acts as a central entry point that translates simple URLs into actions - whether that's accessing a service, triggering an automation, or redirecting to an app-specific deep link.
+
+Instead of remembering `192.168.1.73:8384`, you access `http://sync.lan`. 
+Instead of complex scripts, you use `http://dy.lan/n/meeting` to search your notes for "meeting".
 
 ## Why Use Dylan?
-
-**Infrastructure Abstraction**  
-Service moved to a new IP or port? Update one config line. All your bookmarks, scripts, and automations keep working.
 
 **Workflow Shortcuts**  
 Turn URLs into actions with pattern-based routing. Search notes, trigger shortcuts, or open specific documents via memorable URLs.
@@ -40,7 +37,7 @@ docker-compose up -d
 
 Access the dashboard at `http://localhost:8080/dylan`
 
-For production deployment with dedicated IP (macvlan), see ([DEPLOYMENT.md](https://github.com/rhsev/dy.lan/blob/main/DEPLOYMENT.md)).
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full setup instructions.
 
 ---
 
@@ -90,9 +87,9 @@ Access: `http://dy.lan/n/meeting` → Search Apple Notes for "meeting"
 ## Technical Notes
 
 - Ruby 4.0 with async/fiber concurrency
-- ~20 MB RAM footprint
+- ~30 MB RAM inside the container
 - ~20ms response time in local networks
-- Handles thousands of requests per second
+- Handles thousands of requests per second (>5,000 req/s on Mac mini M4, >2,000 req/s on Synology DS224+)
 - No database required
 
 Built for 24/7 operation on home infrastructure.
@@ -111,19 +108,26 @@ Built for 24/7 operation on home infrastructure.
 - Circuit breaker (auto-disables broken plugins)
 
 **What Dylan Doesn't Do**
-- HTTPS/TLS termination (HTTP only)
-- WebSocket proxying
-- Complex web apps (Nextcloud, etc.)
-- Authentication/authorization
-- Load balancing
+- No HTTPS proxy service
+- Authentication
 
-For HTTPS or complex routing, use Caddy or Traefik in front of Dylan.
+For HTTPS use Caddy or Traefik.
+
+---
+
+## Companion: Milan
+
+Dylan pairs with [mi.lan](https://github.com/rhsev/mi.lan), a lightweight script executor running on macOS. Dylan acts as the central router, Milan as the local executor. Together they bridge server-side logic with client-side automation.
+
+```
+http://mi.lan/mini/mail/abc123  →  Dylan  →  Milan (Mac)  →  script execution
+```
 
 ---
 
 ## Project Status
 
-**Shared as-is.** This project was built to solve specific friction in personal automation workflows. The code is designed to be simple, transparent, and easy to extend with plugins.
+**Shared as-is.** This project was built for use in personal automation workflows. The code is designed to be simple, transparent, and easy to extend with plugins.
 
 **License:** MIT
 
@@ -131,5 +135,5 @@ For HTTPS or complex routing, use Caddy or Traefik in front of Dylan.
 
 ## Credits
 
-Built by Ralf Hülsmann ([GitHub](https://github.com/rhsev)), inspired by Brett Terpstra's Ruby tools and automation philosophy.
+Built by Ralf Hülsmann ([GitHub](https://github.com/rhsev)), inspired by Brett Terpstra's Ruby tools and automation philosophy. Featured in Brett's [blog post](https://brettterpstra.com/2026/01/27/a-url-router-that-turns-your-local-network-into-a-workflow-engine/).
 
