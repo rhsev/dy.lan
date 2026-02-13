@@ -108,10 +108,10 @@ Built for 24/7 operation on home infrastructure.
 - Circuit breaker (auto-disables broken plugins)
 
 **What Dylan Doesn't Do**
-- No HTTPS proxy service
-- Authentication
+- No HTTPS termination
+- No authentication
 
-For HTTPS use Caddy or Traefik.
+For HTTPS, Dylan works well with Caddy as a reverse proxy in front of it.
 
 ---
 
