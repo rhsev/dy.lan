@@ -2,3 +2,9 @@
 .claude/
 dylan.rb
 archive/
+plugins/31-pattern-redirect.rb
+plugins/55-cross-device.rb
+plugins/55-cron-check.rb
+config/host-redirects.yaml
+caddy/
+docker-compose.caddy.yml

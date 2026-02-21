@@ -17,7 +17,7 @@
 require 'yaml'
 
 # Only respond to these domains
-MILAN_CONNECT_DOMAINS = ['mi.lan']
+MILAN_CONNECT_DOMAINS = ['mi.lan', 'dy.lan']
 
 class MilanConnectPlugin < Dylan::Plugin
   # Match any path starting with /<word>/
