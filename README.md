@@ -30,14 +30,14 @@ YAML configs for simple redirects. Ruby plugins for custom logic. Add new workfl
 **Requirements:** Docker
 
 ```bash
-git clone https://github.com/rhsev/dylan
-cd dylan
-docker-compose up -d
+git clone https://github.com/rhsev/dy.lan
+cd dy.lan
+docker compose up -d
 ```
 
 Access the dashboard at `http://localhost:8080/dylan`
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for full setup instructions.
+> **Tip:** For host-based routing (e.g. `http://sync.lan`), give Dylan its own IP using a Docker macvlan network. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
 
 ---
 
