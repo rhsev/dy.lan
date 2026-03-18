@@ -1,12 +1,6 @@
 .DS_Store
 .claude/
 dylan.rb
-archive/
-plugins/31-pattern-redirect.rb
-plugins/55-cross-device.rb
-plugins/55-cron-check.rb
-plugins/66-widget.rb
+local/
 config/host-redirects.yaml
-caddy/
-docker-compose.caddy.yml
 docker-compose.infrastructure.yml
