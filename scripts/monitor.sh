@@ -17,7 +17,7 @@ declare -A hosts=(
 # Format: ["Name"]="host:port"
 declare -A services=(
   ["Milan Mini"]="192.168.1.118:8080"
-  ["Milan Book"]="192.168.1.188:8080"
+  ["Milan Book"]="192.168.1.195:8080"
 )
 
 # File paths
@@ -28,7 +28,7 @@ STATUS_FILE="/app/data/monitor_status.txt"
 get_last_status() {
   local ip="$1"
   if [[ -f "$STATUS_FILE" ]]; then
-    grep "^$ip:" "$STATUS_FILE" 2>/dev/null | cut -d: -f2
+    grep "^$ip:" "$STATUS_FILE" 2>/dev/null | awk -F: '{print $NF}'
   fi
 }
 
@@ -100,14 +100,14 @@ for name in "${!hosts[@]}"; do
   fi
 
   # Collect status for new status file
-  new_status+="$ip:$current_status"$'\n'
+  new_status+="$ip:$name:$current_status"$'\n'
 
   # 3. Notify only on status change
   if [[ "$last_status" != "$current_status" ]]; then
     if [[ "$current_status" == "offline" ]]; then
-      curl -s -d "$name ($ip) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($ip) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
     else
-      curl -s -d "$name ($ip) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($ip) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
     fi
   fi
 done
@@ -139,14 +139,14 @@ for name in "${!services[@]}"; do
   fi
 
   # Collect status
-  new_status+="$addr:$current_status"$'\n'
+  new_status+="$addr:$name:$current_status"$'\n'
 
   # Notify on status change
   if [[ "$last_status" != "$current_status" ]]; then
     if [[ "$current_status" == "offline" ]]; then
-      curl -s -d "$name ($addr) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($addr) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
     else
-      curl -s -d "$name ($addr) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($addr) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
     fi
   fi
 done
