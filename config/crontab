@@ -1,2 +1,2 @@
 # Dylan Cron Jobs
-*/5 * * * * /app/scripts/monitor.sh > /proc/1/fd/1 2>&1
+*/5 * * * * /app/scripts/monitor.sh > /proc/1/fd/1 2>&1 && curl -s --max-time 5 http://localhost/widget > /dev/null 2>&1

@@ -12,6 +12,7 @@ services:
 
     volumes:
       - ./data:/app/data:rw
+      - ./config:/app/config:ro
       - ./scripts:/app/scripts:ro
       - ./plugins:/app/plugins:ro
 

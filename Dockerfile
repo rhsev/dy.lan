@@ -12,9 +12,6 @@ RUN bundle install
 # App-Code kopieren
 COPY . .
 
-# Crontab installieren
-RUN crontab /app/config/crontab
-
 # Port 80 exponieren
 EXPOSE 80
 
