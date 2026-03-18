@@ -50,51 +50,8 @@ environment:
 
 ---
 
-## Macvlan Setup (Optional)
-
-For host-based routing (e.g. `http://sync.lan` → Syncthing), Dylan needs its own IP address on your local network. A Docker macvlan network makes this possible.
-
-### Create the Network
-
-```yaml
-# infrastructure/docker-compose.yml
-networks:
-  dockervlan:
-    name: dockervlan
-    driver: macvlan
-    driver_opts:
-      parent: eth0  # ← Your network interface (check with: ip addr)
-    ipam:
-      config:
-        - subnet: "192.168.1.0/24"
-          gateway: "192.168.1.1"
-```
-
-### Deploy Dylan with macvlan
-
-```yaml
-# docker-compose.yml (replace the default one)
-services:
-  dylan:
-    build: .
-    container_name: dylan
-    restart: unless-stopped
-    networks:
-      existing_macvlan:
-        ipv4_address: 192.168.1.252  # ← Choose an available IP
-    environment:
-      - PORT=80
-      - RUBY_ENV=production
-
-networks:
-  existing_macvlan:
-    external: true
-    name: dockervlan
-```
-
-Choose an IP that is in your network range, not used by another device, and outside your DHCP range.
-
-Access Dylan at `http://192.168.1.252/dylan` from any device on your network.
+> **Advanced: Own IP via macvlan**
+> For host-based routing (e.g. `http://sync.lan` → Syncthing), give Dylan its own IP on your local network using a Docker macvlan network. Create the network with `docker network create --driver macvlan --subnet=192.168.1.0/24 --gateway=192.168.1.1 --opt parent=eth0 dockervlan`, then assign a static IP in `docker-compose.yml`. See the [Docker macvlan docs](https://docs.docker.com/network/macvlan/) for details.
 
 ---
 

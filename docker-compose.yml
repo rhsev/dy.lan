@@ -2,27 +2,20 @@ version: '3.8'
 
 services:
   dylan:
-    image: dylan:1.0  # Use pre-built image
+    build: .
     container_name: dylan
     restart: unless-stopped
     cap_add:
       - NET_RAW
+    ports:
+      - "8080:80"
 
     volumes:
-      - /volume1/docker/dylan/data:/app/data:rw
-      - /volume1/docker/dylan/scripts:/app/scripts:ro
-      - /volume1/docker/dylan/plugins:/app/plugins:ro
-
-    networks:
-      existing_macvlan:
-        ipv4_address: 192.168.1.252
+      - ./data:/app/data:rw
+      - ./scripts:/app/scripts:ro
+      - ./plugins:/app/plugins:ro
 
     environment:
       - PORT=80
       - RUBY_ENV=production
       - TZ=Europe/Berlin
-
-networks:
-  existing_macvlan:
-    external: true
-    name: dockervlan
