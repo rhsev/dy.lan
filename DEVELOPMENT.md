@@ -156,6 +156,27 @@ Dylan::Response.text("Hello World")
 Dylan::Response.text("Created", status: 201)
 ```
 
+### SSE Streaming
+
+For plugins that stream output to the browser via Server-Sent Events:
+
+```ruby
+def call(host, path, request)
+  Dylan::Response.sse do |body|
+    Async do
+      3.times do |i|
+        body.write("data: line #{i}\n\n")
+        Async::Task.current.sleep(1)
+      end
+      body.write("event: done\ndata: \n\n")
+      body.close
+    end
+  end
+end
+```
+
+The block must start an `Async` task and return immediately. The response streams as chunks are written to `body`. Close `body` when done.
+
 ### Error Responses
 
 ```ruby
