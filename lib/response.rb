@@ -2,6 +2,7 @@
 
 require 'async/http/protocol/response'
 require 'protocol/http/body/buffered'
+require 'protocol/http/body/writable'
 
 module Dylan
   # Response-Helper für gängige HTTP-Antworten
@@ -51,6 +52,24 @@ module Dylan
       Async::HTTP::Protocol::Response[
         status,
         { 'content-type' => 'application/json; charset=UTF-8' },
+        body
+      ]
+    end
+
+    # SSE (Server-Sent Events) Streaming Response
+    # Yields a Protocol::HTTP::Body::Writable; caller starts an Async task inside the block.
+    # The block returns immediately; the response streams as chunks are written.
+    # @yieldparam body [Protocol::HTTP::Body::Writable]
+    def self.sse
+      body = Protocol::HTTP::Body::Writable.new
+      yield body
+      Async::HTTP::Protocol::Response[
+        200,
+        {
+          'content-type'      => 'text/event-stream; charset=UTF-8',
+          'cache-control'     => 'no-cache',
+          'x-accel-buffering' => 'no'
+        },
         body
       ]
     end

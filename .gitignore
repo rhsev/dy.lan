@@ -4,3 +4,8 @@ dylan.rb
 local/
 config/host-redirects.yaml
 docker-compose.infrastructure.yml
+
+# Pad plugin (private)
+plugins/55-pad.rb
+config/pad.yaml
+data/cheatsheet/
