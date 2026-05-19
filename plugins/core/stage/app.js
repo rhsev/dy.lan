@@ -209,6 +209,9 @@ function loadNotes(source, btn) {
       </div>
     </div>
   `);
+  // CSS-Hook: .panel.notes-active entfernt das Panel-Padding und stellt
+  // overflow:hidden, damit das Split-View bis zum Browser-Rand reicht.
+  panel.classList.add('notes-active');
   btn.classList.remove('loading');
 
   fetch(PREFIX + '/notes/' + encodeURIComponent(source))
