@@ -17,6 +17,9 @@ BasicSocket.do_not_reverse_lookup = true
 require_relative 'lib/plugin'
 require_relative 'lib/router'
 require_relative 'lib/response'
+require_relative 'lib/http_pool'
+require_relative 'lib/static_assets'
+require_relative 'lib/milan'
 
 PORT = ENV.fetch('PORT', 80).to_i
 PLUGIN_DIR = File.join(__dir__, 'plugins')
@@ -45,7 +48,9 @@ puts "Dylan 1.0 - Async Dynamic HTTP Router"
 puts "=" * 60
 
 if Dir.exist?(PLUGIN_DIR)
-  plugin_files = Dir.glob("#{PLUGIN_DIR}/*.rb").sort
+  # Plugins liegen in Unterordnern: core/ (notwendig), extra/ (öffentlich, ggf. anonymisiert), custom/ (privat).
+  # Sortierung nach Dateiname, damit die Prio-Nummer ordnerübergreifend wirkt.
+  plugin_files = Dir.glob("#{PLUGIN_DIR}/**/*.rb").sort_by { File.basename(it) }
 
   # Ruby 4.0: Nutze 'it' Parameter für sauberere Syntax
   # Safe loading: Continue even if a plugin fails to load

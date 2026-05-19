@@ -4,7 +4,8 @@ export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 
 # Am Anfang vom Script als Config-Variable
-NTFY_TOPIC="mytopic"  # Change to your ntfy.sh topic
+NTFY_SERVER="https://ntfy.sh"  # Change to your ntfy server URL
+NTFY_TOPIC="mytopic"  # Change to your ntfy topic
 
 # Define hosts to monitor (ping check)
 declare -A hosts=(
@@ -91,7 +92,7 @@ for name in "${!hosts[@]}"; do
   last_status=$(get_last_status "$ip")
 
   # 2. Determine current status
-  if ping -c 1 -w 1 "$ip" > /dev/null 2>&1; then
+  if ping -c 3 -w 5 "$ip" 2>/dev/null | grep -q "bytes from"; then
     current_status="online"
     echo "<tr><td>&#x1F7E2; Online</td><td>$name</td><td>$ip</td></tr>" >> "$OUTPUT"
   else
@@ -105,9 +106,9 @@ for name in "${!hosts[@]}"; do
   # 3. Notify only on status change
   if [[ "$last_status" != "$current_status" ]]; then
     if [[ "$current_status" == "offline" ]]; then
-      curl -s --max-time 5 -d "$name ($ip) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($ip) ist offline!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
     else
-      curl -s --max-time 5 -d "$name ($ip) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($ip) ist wieder online!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
     fi
   fi
 done
@@ -144,9 +145,9 @@ for name in "${!services[@]}"; do
   # Notify on status change
   if [[ "$last_status" != "$current_status" ]]; then
     if [[ "$current_status" == "offline" ]]; then
-      curl -s --max-time 5 -d "$name ($addr) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($addr) ist offline!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
     else
-      curl -s --max-time 5 -d "$name ($addr) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($addr) ist wieder online!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
     fi
   fi
 done

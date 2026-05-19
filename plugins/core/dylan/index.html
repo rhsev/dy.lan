@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>dy.lan Dashboard</title>
+  <link rel="stylesheet" href="/dylan/assets/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>dy.lan Dashboard</h1>
+    <p>Server management and debugging endpoints.</p>
+
+    <div class="endpoint">
+      <strong><a href="/dylan/routes">/dylan/routes</a></strong>
+      <p>List all registered plugins and their patterns.</p>
+    </div>
+
+    <div class="endpoint">
+      <strong><a href="/dylan/stats">/dylan/stats</a></strong>
+      <p>Server statistics (uptime, request counts).</p>
+    </div>
+
+    <div class="endpoint">
+      <strong><a href="/dylan/test?path=/g/test">/dylan/test?path=/foo</a></strong>
+      <p>Test which plugin matches a given path.</p>
+    </div>
+
+    <div class="endpoint">
+      <strong><a href="/dylan/reload">/dylan/reload</a></strong>
+      <p>Trigger server restart (reloads all plugins and code).</p>
+    </div>
+
+    <p class="muted" style="margin-top: 40px;">
+      Add <code>?format=json</code> to any endpoint for JSON response.<br>
+      YAML configs hot-reload automatically when changed.
+    </p>
+  </div>
+</body>
+</html>

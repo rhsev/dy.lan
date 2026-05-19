@@ -8,8 +8,8 @@
 require 'net/http'
 require 'benchmark'
 
-HOST = 'localhost'
-PORT = 8080  # Mac: 8080, Synology: 80
+HOST = ENV.fetch('DYLAN_HOST', 'localhost')
+PORT = ENV.fetch('DYLAN_PORT', '8080').to_i
 
 def make_request(path)
   start = Time.now
@@ -58,14 +58,14 @@ puts "  Expected serial: ~#{(paths.count * 10).round(0)}ms"
 puts
 
 # Test 3: Slow Request + Fast Requests (Demo Async Advantage)
-puts "Test 3: Slow Request (Weather) + Fast Requests simultaneously"
+puts "Test 3: Slow Request (/dylan/slow/2000) + Fast Requests simultaneously"
 puts "-" * 70
-puts "  Starting /weather/Berlin (2s) + 3x Fast Requests in parallel"
+puts "  Starting /dylan/slow/2000 (2s async sleep) + 3x Fast Requests in parallel"
 puts
 
 elapsed = Benchmark.realtime do
   threads = [
-    Thread.new { make_request('/weather/Berlin') },
+    Thread.new { make_request('/dylan/slow/2000') },
     Thread.new { sleep 0.1; make_request('/g/async') },
     Thread.new { sleep 0.2; make_request('/gh/rails') },
     Thread.new { sleep 0.3; make_request('/wiki/Fiber') }
@@ -85,7 +85,7 @@ puts
 
 puts "=" * 70
 puts "Interpretation:"
-puts "  - Async Server (Dylan 1.0): Fast requests respond immediately (~3-10ms)"
-puts "  - Sync Server: Fast requests wait for Weather (>2000ms)"
-puts "  - Ruby 4.0 Fibers: Non-blocking I/O with Async::Task"
+puts "  - Async Server (Dylan 1.0): Fast requests respond in ~3-10ms while slow runs"
+puts "  - Sync Server: Fast requests would wait for /dylan/slow (>2000ms total each)"
+puts "  - Ruby 4.0 Fibers: Non-blocking I/O via fiber scheduler (Kernel#sleep yields)"
 puts "=" * 70

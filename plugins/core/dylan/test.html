@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Route Test</title>
+  <link rel="stylesheet" href="/dylan/assets/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Route Tester</h1>
+    <a class="back-link" href="/dylan">← Back to Dashboard</a>
+
+    <form class="test-form" method="GET" action="/dylan/test">
+      <input type="text" name="path" placeholder="/example/path" value="{{PATH}}">
+      <button type="submit">Test</button>
+    </form>
+
+    {{STATUS_HTML}}
+  </div>
+</body>
+</html>

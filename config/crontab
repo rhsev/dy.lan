@@ -1,0 +1,11 @@
+# Dylan Cron Jobs
+#
+# Diese Datei wird im Container von cron installiert (siehe Dockerfile).
+# Aktive Einträge werden im Minuten- bzw. konfigurierten Takt ausgeführt.
+# Auskommentierte Zeilen sind Vorlagen für optionale Plugins.
+
+# Monitor-Plugin (extra/65-monitor.rb): Network-Health alle 5 Minuten generieren
+*/5 * * * * /app/scripts/monitor.sh > /proc/1/fd/1 2>&1
+
+# Stage Plugin (kommt in einer späteren Release): pending Jobs jede Minute abfragen
+# * * * * *   curl -sf http://localhost:8080/stage/jobs/check > /proc/1/fd/1 2>&1

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dylan Routes</title>
+  <link rel="stylesheet" href="/dylan/assets/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Registered Routes</h1>
+    <a class="back-link" href="/dylan">← Back to Dashboard</a>
+    <table class="routes">
+      <tr><th>Priority</th><th>Plugin</th><th>Pattern</th></tr>
+{{ROWS}}
+    </table>
+    <p class="muted">
+      Total: {{TOTAL}} plugin(s) | First match wins (lower priority number = checked first)
+    </p>
+  </div>
+</body>
+</html>
