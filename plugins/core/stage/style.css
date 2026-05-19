@@ -298,7 +298,9 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 /* Notes split panel */
 .panel.notes-active { padding: 0; overflow: hidden; }
 .notes-layout {
-  display: flex; height: 100%; gap: 0; margin: -22px -26px;
+  display: flex; height: 100%; gap: 0;
+  /* Kein negativer Margin nötig: .panel.notes-active setzt padding:0, das
+     Layout füllt die Panel-Fläche bündig. */
 }
 .notes-nav {
   width: 200px; overflow-y: auto;
