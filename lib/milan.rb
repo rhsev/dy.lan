@@ -119,10 +119,40 @@ module Dylan
       def reset!
         @config = nil
         @config_loaded_at = nil
+        @health_cache = nil
+        @health_cache_at = nil
         pool.clear!
       end
 
+      # Health-Status aller Agents. Gibt Map { agent_name => 'online'|'degraded'|'offline' } zurück.
+      # Server-Cache mit kurzer TTL — verhindert dass mehrere Browser-Tabs/Polling-Loops
+      # Milan überproportional belasten.
+      HEALTH_CACHE_TTL = 8  # Sekunden
+
+      def health_check
+        now = Time.now
+        if @health_cache && @health_cache_at && (now - @health_cache_at) < HEALTH_CACHE_TTL
+          return @health_cache
+        end
+
+        @health_cache = agents.each_with_object({}) do |(name, _url), result|
+          result[name] = check_agent_health(name)
+        end
+        @health_cache_at = now
+        @health_cache
+      end
+
       private
+
+      def check_agent_health(name)
+        response = get(name, '/health')
+        response.ok? ? 'online' : 'degraded'
+      rescue UnreachableError
+        'offline'
+      rescue => e
+        warn "[Milan health-check] #{name}: #{e.message}"
+        'degraded'
+      end
 
       def pool
         @pool ||= HttpPool.new

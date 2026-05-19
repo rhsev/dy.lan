@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <link rel="stylesheet" href="{{PREFIX}}/assets/style.css">
+</head>
+<body data-prefix="{{PREFIX}}">
+  <header>
+    <button class="menu-toggle" id="menu-toggle" aria-label="Menü" aria-expanded="false">☰</button>
+    <div class="dot"></div>
+    <h1>{{TITLE}}</h1>
+  </header>
+  <div class="backdrop" id="backdrop"></div>
+  <main>
+    <aside id="aside">
+{{SIDEBAR}}
+    </aside>
+    <div class="panel" id="panel">
+      <div class="placeholder">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        </svg>
+        <p>Button wählen</p>
+      </div>
+    </div>
+  </main>
+  <script src="{{PREFIX}}/assets/app.js"></script>
+</body>
+</html>

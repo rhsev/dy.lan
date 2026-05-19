@@ -1,11 +1,17 @@
 #!/bin/bash
+# Network Monitor — generates a Markdown status report and writes it to
+# /app/data/monitor.md. The Dylan plugin serves the file as text/plain;
+# both Stage (Output-Box) and direct browser visits (via /monitor) see
+# the same Markdown-formatted text.
+#
+# Cron schedule: see config/crontab (default every 5 minutes).
 
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 
-# Am Anfang vom Script als Config-Variable
-NTFY_SERVER="https://ntfy.sh"  # Change to your ntfy server URL
-NTFY_TOPIC="mytopic"  # Change to your ntfy topic
+# Notification config
+NTFY_SERVER="https://ntfy.sh"
+NTFY_TOPIC="mytopic"
 
 # Define hosts to monitor (ping check)
 declare -A hosts=(
@@ -14,152 +20,97 @@ declare -A hosts=(
   ["Steckdose Bad"]="192.168.1.55"
 )
 
-# Define services to monitor (port check)
-# Format: ["Name"]="host:port"
+# Define services to monitor (port check). Format: ["Name"]="host:port"
 declare -A services=(
   ["Milan Mini"]="192.168.1.118:8080"
   ["Milan Book"]="192.168.1.195:8080"
 )
 
-# File paths
-OUTPUT="/app/data/monitor.html"
+OUTPUT="/app/data/monitor.md"
 STATUS_FILE="/app/data/monitor_status.txt"
 
-# Function: Read last status from status file
+# Read previous status of an address from the status file
 get_last_status() {
-  local ip="$1"
+  local addr="$1"
   if [[ -f "$STATUS_FILE" ]]; then
-    grep "^$ip:" "$STATUS_FILE" 2>/dev/null | awk -F: '{print $NF}'
+    grep "^${addr}:" "$STATUS_FILE" 2>/dev/null | awk -F: '{print $NF}'
   fi
 }
 
-# Function: Check if port is open
 check_port() {
-  local host="$1"
-  local port="$2"
+  local host="$1" port="$2"
   timeout 2 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null
 }
 
-# HTML header
-cat > "$OUTPUT" << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv='refresh' content='30'>
-  <title>Netzwerk Monitor</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      background-color: #f5f5f5;
-    }
-    h1, h2 { color: #333; }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      background-color: white;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      margin-bottom: 20px;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 12px;
-      text-align: left;
-    }
-    th {
-      background-color: #4CAF50;
-      color: white;
-    }
-    tr:hover { background-color: #f5f5f5; }
-  </style>
-</head>
-<body>
-<h1>Netzwerk Monitor</h1>
-<h2>Hosts</h2>
-<table>
-<tr><th>Status</th><th>Name</th><th>IP</th></tr>
-EOF
+# Begin output (overwrite)
+{
+  echo "## Hosts"
+  echo
+} > "$OUTPUT"
 
-# Variable for new status file
 new_status=""
 
-# Check hosts
+# ── Hosts (ping) ──────────────────────────────────────────────────────────
 for name in "${!hosts[@]}"; do
   ip="${hosts[$name]}"
-
-  # 1. Read last status from status file
   last_status=$(get_last_status "$ip")
 
-  # 2. Determine current status
   if ping -c 3 -w 5 "$ip" 2>/dev/null | grep -q "bytes from"; then
     current_status="online"
-    echo "<tr><td>&#x1F7E2; Online</td><td>$name</td><td>$ip</td></tr>" >> "$OUTPUT"
+    echo "- 🟢 $name (\`$ip\`)" >> "$OUTPUT"
   else
     current_status="offline"
-    echo "<tr><td>&#x1F534; OFFLINE</td><td>$name</td><td>$ip</td></tr>" >> "$OUTPUT"
+    echo "- 🟠 $name (\`$ip\`) — offline" >> "$OUTPUT"
   fi
 
-  # Collect status for new status file
   new_status+="$ip:$name:$current_status"$'\n'
 
-  # 3. Notify only on status change
+  # Status-change notification
   if [[ "$last_status" != "$current_status" ]]; then
     if [[ "$current_status" == "offline" ]]; then
-      curl -s --max-time 5 -d "$name ($ip) ist offline!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($ip) ist offline!" "$NTFY_SERVER/$NTFY_TOPIC" > /dev/null 2>&1
     else
-      curl -s --max-time 5 -d "$name ($ip) ist wieder online!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($ip) ist wieder online!" "$NTFY_SERVER/$NTFY_TOPIC" > /dev/null 2>&1
     fi
   fi
 done
 
-# Close hosts table, start services section
-cat >> "$OUTPUT" << 'EOF'
-</table>
-<h2>Services</h2>
-<table>
-<tr><th>Status</th><th>Name</th><th>Address</th></tr>
-EOF
+# ── Services (port check) ─────────────────────────────────────────────────
+{
+  echo
+  echo "## Services"
+  echo
+} >> "$OUTPUT"
 
-# Check services (port check)
 for name in "${!services[@]}"; do
   addr="${services[$name]}"
   host="${addr%:*}"
   port="${addr#*:}"
-
-  # Read last status
   last_status=$(get_last_status "$addr")
 
-  # Check port
   if check_port "$host" "$port"; then
     current_status="online"
-    echo "<tr><td>&#x1F7E2; Online</td><td>$name</td><td>$addr</td></tr>" >> "$OUTPUT"
+    echo "- 🟢 $name (\`$addr\`)" >> "$OUTPUT"
   else
     current_status="offline"
-    echo "<tr><td>&#x1F534; OFFLINE</td><td>$name</td><td>$addr</td></tr>" >> "$OUTPUT"
+    echo "- 🟠 $name (\`$addr\`) — offline" >> "$OUTPUT"
   fi
 
-  # Collect status
   new_status+="$addr:$name:$current_status"$'\n'
 
-  # Notify on status change
   if [[ "$last_status" != "$current_status" ]]; then
     if [[ "$current_status" == "offline" ]]; then
-      curl -s --max-time 5 -d "$name ($addr) ist offline!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($addr) ist offline!" "$NTFY_SERVER/$NTFY_TOPIC" > /dev/null 2>&1
     else
-      curl -s --max-time 5 -d "$name ($addr) ist wieder online!" $NTFY_SERVER/$NTFY_TOPIC > /dev/null 2>&1
+      curl -s --max-time 5 -d "$name ($addr) ist wieder online!" "$NTFY_SERVER/$NTFY_TOPIC" > /dev/null 2>&1
     fi
   fi
 done
 
-# HTML footer
-cat >> "$OUTPUT" << 'EOF'
-</table>
-<p style="color: #666; font-size: 12px;">
-Letzte Aktualisierung:
-EOF
-date >> "$OUTPUT"
-echo "</p></body></html>" >> "$OUTPUT"
+# ── Footer + write status file ────────────────────────────────────────────
+{
+  echo
+  echo "_Last update: $(date '+%Y-%m-%d %H:%M:%S')_"
+} >> "$OUTPUT"
 
-# Write new status file (at the end!)
 echo "$new_status" > "$STATUS_FILE"

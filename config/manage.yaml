@@ -1,0 +1,32 @@
+# Dylan Maintenance Cockpit — Stage-Instance unter /manage.
+# Buttons rufen die Maintenance-API auf; der Markdown-Text erscheint in der
+# Output-Box des Stage-Panels.
+
+stage:
+  title: "Dylan Maintenance"
+
+  sections:
+    - title: "Server"
+      buttons:
+        - id: routes
+          label: "📋 Routes"
+          type: action
+          url: "/dylan/routes"
+
+        - id: stats
+          label: "📊 Stats"
+          type: action
+          url: "/dylan/stats"
+
+    - title: "Diagnostics"
+      buttons:
+        - id: test
+          label: "🔎 Test Route"
+          type: input
+          placeholder: "/foo/bar"
+          url: "/dylan/test"
+
+        - id: slow
+          label: "🐢 Slow Endpoint (2s)"
+          type: action
+          url: "/dylan/slow"
