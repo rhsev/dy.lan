@@ -5,9 +5,17 @@
 # the same Markdown-formatted text.
 #
 # Cron schedule: see config/crontab (default every 5 minutes).
+#
+# Robustheit:
+#   - Atomic write via temp file + mv: Reader sehen nie eine halb-geschriebene
+#     Datei. Während die Pings laufen (~5-30s pro Run) bleibt die alte
+#     monitor.md verfügbar.
+#   - TZ explizit setzen: Cronie erbt nicht zwingend die Container-ENV-Variablen,
+#     daher würde `date` sonst UTC ausgeben.
 
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
+export TZ="${TZ:-Europe/Berlin}"
 
 # Notification config
 NTFY_SERVER="https://ntfy.sh"
@@ -27,6 +35,7 @@ declare -A services=(
 )
 
 OUTPUT="/app/data/monitor.md"
+TMP_OUTPUT="${OUTPUT}.tmp"
 STATUS_FILE="/app/data/monitor_status.txt"
 
 # Read previous status of an address from the status file
@@ -46,7 +55,7 @@ check_port() {
 {
   echo "## Hosts"
   echo
-} > "$OUTPUT"
+} > "$TMP_OUTPUT"
 
 new_status=""
 
@@ -57,10 +66,10 @@ for name in "${!hosts[@]}"; do
 
   if ping -c 3 -w 5 "$ip" 2>/dev/null | grep -q "bytes from"; then
     current_status="online"
-    echo "- 🟢 $name (\`$ip\`)" >> "$OUTPUT"
+    echo "- 🟢 $name (\`$ip\`)" >> "$TMP_OUTPUT"
   else
     current_status="offline"
-    echo "- 🟠 $name (\`$ip\`) — offline" >> "$OUTPUT"
+    echo "- 🟠 $name (\`$ip\`) — offline" >> "$TMP_OUTPUT"
   fi
 
   new_status+="$ip:$name:$current_status"$'\n'
@@ -80,7 +89,7 @@ done
   echo
   echo "## Services"
   echo
-} >> "$OUTPUT"
+} >> "$TMP_OUTPUT"
 
 for name in "${!services[@]}"; do
   addr="${services[$name]}"
@@ -90,10 +99,10 @@ for name in "${!services[@]}"; do
 
   if check_port "$host" "$port"; then
     current_status="online"
-    echo "- 🟢 $name (\`$addr\`)" >> "$OUTPUT"
+    echo "- 🟢 $name (\`$addr\`)" >> "$TMP_OUTPUT"
   else
     current_status="offline"
-    echo "- 🟠 $name (\`$addr\`) — offline" >> "$OUTPUT"
+    echo "- 🟠 $name (\`$addr\`) — offline" >> "$TMP_OUTPUT"
   fi
 
   new_status+="$addr:$name:$current_status"$'\n'
@@ -107,10 +116,14 @@ for name in "${!services[@]}"; do
   fi
 done
 
-# ── Footer + write status file ────────────────────────────────────────────
+# ── Footer + atomic publish + write status file ──────────────────────────
 {
   echo
   echo "_Last update: $(date '+%Y-%m-%d %H:%M:%S')_"
-} >> "$OUTPUT"
+} >> "$TMP_OUTPUT"
+
+# Atomic publish: mv ist atomar innerhalb desselben Filesystems, Reader sehen
+# entweder die alte oder die neue Datei — nie eine halbgeschriebene.
+mv "$TMP_OUTPUT" "$OUTPUT"
 
 echo "$new_status" > "$STATUS_FILE"
