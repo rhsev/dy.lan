@@ -21,7 +21,7 @@ Turn URLs into actions with pattern-based routing. Search notes, trigger shortcu
 Stop managing a reverse proxy for simple local tools. Dylan routes HTTP traffic to your services without the complexity of Traefik or nginx for non-HTTPS use cases.
 
 **Extensible by Design**  
-YAML configs for simple redirects. Ruby plugins for custom logic. Add new workflows without touching the core.
+YAML configs for simple redirects. Ruby plugins for custom logic. Reusable libs for the heavy lifting (Milan client, HTTP-connection pool, static-asset serving with ETag). Add new workflows without touching the core. See [PLUGINS.md](PLUGINS.md) for the plugin guide.
 
 ---
 
@@ -84,6 +84,30 @@ Access: `http://dy.lan/n/meeting` → Search Apple Notes for "meeting"
 
 ---
 
+## Project Structure
+
+```
+plugins/
+├── core/      # essential features (routing, dashboard, Milan integration)
+├── extra/     # public examples & demos
+└── custom/    # your private plugins (gitignored)
+
+lib/           # reusable building blocks
+├── plugin.rb        # Plugin base class + DSLs (config_file, abstract, ...)
+├── router.rb        # Request routing + circuit breaker
+├── response.rb      # HTTP response helpers (text/html/json/redirect/sse)
+├── http_pool.rb     # Pooled Async::HTTP::Client
+├── milan.rb         # Milan companion-server client
+└── static_assets.rb # Static-file serving with ETag + mtime hot-reload
+```
+
+The plugin loader scans `plugins/` recursively and sorts by **basename** (so
+the numeric prefix sets routing priority across all folders). First match wins.
+
+See [PLUGINS.md](PLUGINS.md) for writing your own plugins and using the libs.
+
+---
+
 ## Technical Notes
 
 - Ruby 4.0 with async/fiber concurrency
@@ -104,8 +128,10 @@ Built for 24/7 operation on home infrastructure.
 - Host/domain-level routing
 - Lightweight reverse proxy for simple HTTP services
 - Plugin architecture for custom workflows
-- Hot-reload for YAML configs
+- Built-in dashboard (`/dylan`) with routes, stats, and route-tester
+- Hot-reload for YAML configs (mtime-throttled), CSS/JS (ETag-validated)
 - Circuit breaker (auto-disables broken plugins)
+- Reusable libraries: Milan client, HTTP pool, static-asset server
 
 **What Dylan Doesn't Do**
 - No TLS certificates

@@ -1,17 +1,20 @@
-# Dylan 1.0 - Development Guide
+# Dylan — Writing Plugins
 
-Complete guide for developing plugins, testing, and extending Dylan 1.0.
+Complete guide for developing, testing, and extending Dylan via plugins.
 
 ---
 
 ## Table of Contents
 
 1. [Plugin Development](#plugin-development)
-2. [Development Environment](#development-environment)
-3. [Testing Plugins](#testing-plugins)
-4. [Debugging](#debugging)
-5. [Best Practices](#best-practices)
-6. [Advanced Topics](#advanced-topics)
+2. [Plugin Folder Structure](#plugin-folder-structure)
+3. [Built-in Libraries](#built-in-libraries)
+4. [Plugin Configuration (DSL)](#plugin-configuration-dsl)
+5. [Development Environment](#development-environment)
+6. [Testing Plugins](#testing-plugins)
+7. [Debugging](#debugging)
+8. [Best Practices](#best-practices)
+9. [Advanced Topics](#advanced-topics)
 
 ---
 
@@ -29,7 +32,7 @@ Dylan uses a simple plugin system:
 
 ### Your First Plugin
 
-Create `plugins/70-wikipedia.rb`:
+Create `plugins/extra/70-wikipedia.rb`:
 
 ```ruby
 # frozen_string_literal: true
@@ -91,7 +94,160 @@ end
 4. **Reload**: Restart container to reload plugins
    ```bash
    docker restart dylan
+   # or trigger from inside Dylan:
+   curl http://localhost:8080/dylan/reload
    ```
+
+---
+
+## Plugin Folder Structure
+
+Plugins live in three subdirectories of `plugins/`. The loader scans
+**all of them recursively** and sorts by **basename** (so the numeric prefix
+controls priority across folders, not within them).
+
+```
+plugins/
+├── core/      # functionally essential, shipped with Dylan
+│   ├── 00-host-redirects.rb
+│   ├── 35-milan-connect.rb
+│   ├── 50-simple-redirects.rb
+│   ├── 90-maintenance.rb
+│   └── 95-whoami.rb
+├── extra/     # public, ships with Dylan (demos, anonymized variants)
+│   ├── 10-checkip.rb
+│   ├── 30-pattern-redirect.rb
+│   ├── 60-weather-demo.rb
+│   └── 65-monitor.rb
+└── custom/    # your private plugins — gitignored
+    └── 80-my-personal-plugin.rb
+```
+
+**Where should your plugin go?**
+
+- **`core/`** — only for plugins that are essential to Dylan's URL-routing
+  feature set (proxy, redirects, dashboard). Rarely the right place for
+  user-written plugins.
+- **`extra/`** — public examples, generic helpers, anything you'd be happy
+  to publish on GitHub.
+- **`custom/`** — anything that contains inline secrets, personal config,
+  or device-specific behavior. Gitignored by default.
+
+**Convention**: If a plugin has its config in YAML (e.g. `redirects.yaml`),
+it can stay generic in `extra/`. If a plugin hardcodes domain-specific
+behavior inside Ruby, prefer `custom/` and (optionally) ship an anonymized
+variant in `extra/` for documentation.
+
+---
+
+## Built-in Libraries
+
+Dylan ships several reusable libraries in `lib/` that plugins can compose:
+
+| Lib | Purpose |
+|---|---|
+| `Dylan::Response` | HTTP response builders (`text`, `html`, `json`, `redirect`, `sse`, `error`) |
+| `Dylan::HttpPool` | Reusable `Async::HTTP::Client` pool. Single source for HTTP connection caching. |
+| `Dylan::Milan` | Milan agent registry + cached HTTP clients. `get`, `stream`, `proxy_sse`, error-mapping `rescued` helper. Only relevant when you talk to a Milan companion server. |
+| `Dylan::StaticAssets` | Static file server with ETag + mtime-based hot-reload. For plugins that ship HTML/CSS/JS bundles. |
+
+**Example using Dylan::HttpPool** (reverse-proxy a backend):
+```ruby
+class ProxyPlugin < Dylan::Plugin
+  pattern(%r{^/wiki/})
+
+  def initialize
+    super
+    @pool = Dylan::HttpPool.new
+  end
+
+  def call(host, path, request)
+    client = @pool.for('https://en.wikipedia.org')
+    # ... use client.get(path) etc.
+  end
+end
+```
+
+**Example using Dylan::StaticAssets** (serve a bundled frontend):
+```ruby
+class MyDashboard < Dylan::Plugin
+  pattern(%r{^/my(/|$)})
+  ASSETS_DIR  = File.join(__dir__, 'my')          # plugins/.../my/
+  ASSET_TYPES = { 'style.css' => 'text/css; charset=UTF-8',
+                  'app.js'    => 'application/javascript; charset=UTF-8' }.freeze
+
+  def initialize
+    super
+    @assets = Dylan::StaticAssets.new(dir: ASSETS_DIR, types: ASSET_TYPES)
+  end
+
+  def call(host, path, request)
+    case path
+    when %r{^/my/assets/([\w.-]+)$}
+      @assets.serve(Regexp.last_match(1), request)
+    else
+      Dylan::Response.html(File.read(File.join(ASSETS_DIR, 'index.html')))
+    end
+  end
+end
+```
+
+`Dylan::StaticAssets` handles browser-side ETag caching (`304 Not Modified`
+when unchanged) and a server-side memory cache that invalidates on file
+mtime change — edits to `style.css`/`app.js` are visible on the next browser
+request without a container restart.
+
+See `plugins/core/90-maintenance.rb` and `plugins/extra/65-monitor.rb` for
+working examples in the codebase.
+
+---
+
+## Plugin Configuration (DSL)
+
+For plugins that read config from a YAML file in `config/`, use the
+built-in `config_file` DSL — it provides hot-reload with throttled mtime
+checks and an optional `on_config_reload` callback.
+
+```ruby
+class MyRedirectsPlugin < Dylan::Plugin
+  pattern(/.^/)                           # match? wird überschrieben
+  config_file 'my-redirects.yaml'         # read config/my-redirects.yaml
+  config_section 'redirects'              # optional: only YAML['redirects']
+  config_check_interval 10                # optional: stat throttle (default 5s)
+
+  def initialize
+    super
+    @rules = []
+    config                                # initial load triggers on_config_reload
+  end
+
+  def match?(host, path)
+    config                                # ggf. hot-reload
+    @rules.any? { |r| path.match?(r[:pattern]) }
+  end
+
+  def call(host, path, request)
+    # ... use @rules
+  end
+
+  protected
+
+  def on_config_reload(data)
+    # called once on initial load and on every actual mtime change
+    @rules = (data['redirects'] || []).map { |r| { pattern: Regexp.new(r['pattern']) } }
+    puts "🔄 Reloaded #{@rules.count} rules"
+  end
+end
+```
+
+**Other class-level DSLs:**
+
+- `abstract` — marks this class as a non-routing base. Used when several
+  concrete plugins share a base class. See the `StageBase`/`StagePlugin`
+  pattern for multi-instance plugins (different URL prefixes + configs, same
+  logic).
+- `pattern(regex)` — URL match. Set once per concrete class.
+- `timeout(seconds)` — per-plugin request timeout (default 0.5s).
 
 ---
 
@@ -355,40 +511,54 @@ end
 
 ```
 dylan/
-├── server.rb                 # Main server entry point
-├── Gemfile                   # Ruby dependencies
+├── server.rb                       # Main server entry point
+├── Gemfile                         # Ruby dependencies
 │
-├── lib/
-│   ├── plugin.rb            # Base plugin class
-│   ├── router.rb            # Request router + circuit breaker
-│   └── response.rb          # Response helpers
+├── lib/                            # Reusable libraries
+│   ├── plugin.rb                   # Base plugin class + DSLs
+│   ├── router.rb                   # Request router + circuit breaker
+│   ├── response.rb                 # Response helpers (text/html/json/sse/error)
+│   ├── http_pool.rb                # Async::HTTP::Client pool
+│   ├── milan.rb                    # Milan companion-server client
+│   └── static_assets.rb            # Static file server with ETag caching
 │
-├── plugins/                 # Your plugins here!
-│   ├── 00-maintenance.rb    # Management UI (/dylan)
-│   ├── 10-checkip.rb        # Synology CheckIP emulation
-│   ├── 20-monitor.rb        # Network monitor
-│   ├── 30-pattern-redirect.rb  # Pattern-based redirects
-│   ├── 50-simple-redirects.rb  # YAML redirects
-│   └── 60-weather-demo.rb   # API example
+├── plugins/                        # Plugin folders (recursive scan)
+│   ├── core/                       # essential Dylan features
+│   │   ├── 00-host-redirects.rb    # Reverse proxy + host-based redirects
+│   │   ├── 35-milan-connect.rb     # Milan-agent forwarding
+│   │   ├── 50-simple-redirects.rb  # YAML-driven redirects
+│   │   ├── 90-maintenance.rb       # Dashboard, /dylan/*
+│   │   ├── 95-whoami.rb            # Milan identity check
+│   │   └── dylan/                  # Maintenance frontend assets
+│   │       ├── index.html
+│   │       ├── routes.html
+│   │       ├── stats.html
+│   │       ├── test.html
+│   │       └── style.css
+│   ├── extra/                      # Demos & public examples
+│   │   ├── 10-checkip.rb           # Synology CheckIP emulation
+│   │   ├── 30-pattern-redirect.rb  # Pattern-redirect demo
+│   │   ├── 60-weather-demo.rb      # External API demo
+│   │   └── 65-monitor.rb           # Network-monitor display
+│   └── custom/                     # Your private plugins (gitignored)
 │
 ├── config/
-│   ├── crontab              # Cron schedule
-│   └── redirects.yaml       # Simple redirect rules
+│   ├── crontab                     # Cron schedule (container-side)
+│   ├── milan.yaml                  # Milan agent registry
+│   └── redirects.yaml              # Simple redirects
 │
 ├── scripts/
-│   ├── monitor.sh           # Monitor cron job
-│   └── start.sh             # Container startup
+│   ├── monitor.sh                  # Monitor cron job
+│   └── start.sh                    # Container startup
 │
-└── data/                    # Runtime data (generated)
-    ├── monitor.html
-    └── monitor_status.txt
+└── data/                           # Runtime data (gitignored, generated)
 ```
 
 ### Development Workflow
 
 ```bash
 # 1. Edit a plugin
-vim plugins/70-my-plugin.rb
+vim plugins/extra/70-my-plugin.rb
 
 # 2. Restart container (hot reload not available)
 docker restart dylan
@@ -463,7 +633,7 @@ Test error handling with the chaos plugin:
 
 ```bash
 # Enable chaos plugin
-mv plugins/99-chaos-test.rb.disabled plugins/99-chaos-test.rb
+mv plugins/extra/99-chaos-test.rb.disabled plugins/extra/99-chaos-test.rb
 docker restart dylan
 
 # Trigger errors to test circuit breaker
@@ -542,7 +712,7 @@ exit
 **Plugin not loading:**
 ```bash
 # Check syntax
-docker exec dylan ruby -c /app/plugins/70-my-plugin.rb
+docker exec dylan ruby -c /app/plugins/extra/70-my-plugin.rb
 
 # Check file permissions
 docker exec dylan ls -la /app/plugins/
@@ -705,7 +875,7 @@ gem 'sequel'
 ```
 
 ```ruby
-# plugins/80-database.rb
+# plugins/custom/80-database.rb
 require 'sequel'
 
 class DatabasePlugin < Dylan::Plugin
