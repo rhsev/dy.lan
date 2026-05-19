@@ -160,7 +160,7 @@ function runStream(id, btn) {
 
   (async () => {
     try {
-      const res = await fetch('/pad/run/' + encodeURIComponent(id));
+      const res = await fetch(PREFIX + '/run/' + encodeURIComponent(id));
       if (!res.ok) { finish('error', '\n[error] HTTP ' + res.status); return; }
 
       reader = res.body.getReader();
@@ -211,7 +211,7 @@ function loadNotes(source, btn) {
   `);
   btn.classList.remove('loading');
 
-  fetch('/pad/notes/' + encodeURIComponent(source))
+  fetch(PREFIX + '/notes/' + encodeURIComponent(source))
     .then(r => r.json())
     .then(files => {
       const nav = document.getElementById('notes-nav');
@@ -229,7 +229,7 @@ function loadNotes(source, btn) {
           item.classList.add('active');
           const content = document.getElementById('notes-content');
           content.innerHTML = '<div class="notes-loading">Lade\u2026</div>';
-          fetch('/pad/notes/' + encodeURIComponent(item.dataset.source) +
+          fetch(PREFIX + '/notes/' + encodeURIComponent(item.dataset.source) +
                 '/' + encodeURIComponent(item.dataset.file))
             .then(r => r.text())
             .then(html => {
@@ -255,7 +255,7 @@ function loadJobs(btn) {
 
   const load = async () => {
     try {
-      const res  = await fetch('/pad/jobs');
+      const res  = await fetch(PREFIX + '/jobs');
       const html = await res.text();
       if (activeBtn === btn) {
         setPanel(`
