@@ -182,6 +182,20 @@ function runStream(id, btn) {
             reader.cancel(); finish('ok', null); return;
           } else if (event === 'stream_error') {
             reader.cancel(); finish('error', '\n[error] ' + data); return;
+          } else if (event === 'input_request') {
+            // Multi-step workflow: Skript bittet um Eingabe und nennt die
+            // Action-URL für den Folge-Aufruf. Wir beenden den aktuellen Stream
+            // sauber und zeigen ein Prompt-Feld unter dem Output.
+            reader.cancel();
+            finish('ok', null);
+            let prompt;
+            try { prompt = JSON.parse(data); }
+            catch (e) {
+              out.textContent += '\n[invalid MILAN_PROMPT JSON: ' + data + ']\n';
+              return;
+            }
+            renderStreamPrompt(prompt.label || 'Argument', prompt.action, btn);
+            return;
           } else {
             out.textContent += data + '\n';
             out.scrollTop = out.scrollHeight;
@@ -193,6 +207,57 @@ function runStream(id, btn) {
       if (!done) finish('error', '\n[connection error]');
     }
   })();
+}
+
+/* ── Prompt nach input_request ──────────────────────────── */
+/* Stream ist beendet, der Output bleibt sichtbar; darunter erscheint eine
+   Eingabezeile. Submit → ruft `action/<encoded-value>` als normalen Action-
+   Endpoint auf, das Ergebnis erscheint als Output-Box unter dem Prompt. */
+function renderStreamPrompt(label, action, btn) {
+  if (!action) {
+    panel.insertAdjacentHTML('beforeend',
+      `<div class="output-box error">[MILAN_PROMPT ohne action]</div>`);
+    return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'input-row';
+  wrap.style.marginTop = '12px';
+  wrap.innerHTML = `
+    <input class="pad-input" type="text" placeholder="${esc(label)}" autofocus>
+    <button class="run-btn">Weiter</button>
+  `;
+  panel.appendChild(wrap);
+
+  const input  = wrap.querySelector('input');
+  const runBtn = wrap.querySelector('button');
+
+  const submit = async () => {
+    const val = input.value.trim();
+    if (!val) return;
+    runBtn.disabled = true;
+
+    const url = action + '/' + encodeURIComponent(val);
+    const resultBox = document.createElement('div');
+    resultBox.className = 'output-box';
+    resultBox.textContent = 'Calling ' + url + ' …';
+    panel.appendChild(resultBox);
+
+    try {
+      const res  = await fetch(url);
+      const text = await res.text();
+      resultBox.className = 'output-box ' + (res.ok ? 'ok' : 'error');
+      resultBox.textContent = text.trim() || '(no output)';
+    } catch (e) {
+      resultBox.className = 'output-box error';
+      resultBox.textContent = e.message;
+    } finally {
+      input.disabled = true;        // einmal pro Prompt
+    }
+  };
+
+  runBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
 }
 
 /* ── Notes split panel ──────────────────────────────────── */
