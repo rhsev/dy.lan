@@ -66,10 +66,10 @@ for name in "${!hosts[@]}"; do
 
   if ping -c 3 -w 5 "$ip" 2>/dev/null | grep -q "bytes from"; then
     current_status="online"
-    echo "- 🟢 $name (\`$ip\`)" >> "$TMP_OUTPUT"
+    echo "🟢 $name (\`$ip\`)" >> "$TMP_OUTPUT"
   else
     current_status="offline"
-    echo "- 🟠 $name (\`$ip\`) — offline" >> "$TMP_OUTPUT"
+    echo "🟠 $name (\`$ip\`) — offline" >> "$TMP_OUTPUT"
   fi
 
   new_status+="$ip:$name:$current_status"$'\n'
@@ -99,10 +99,10 @@ for name in "${!services[@]}"; do
 
   if check_port "$host" "$port"; then
     current_status="online"
-    echo "- 🟢 $name (\`$addr\`)" >> "$TMP_OUTPUT"
+    echo "🟢 $name (\`$addr\`)" >> "$TMP_OUTPUT"
   else
     current_status="offline"
-    echo "- 🟠 $name (\`$addr\`) — offline" >> "$TMP_OUTPUT"
+    echo "🟠 $name (\`$addr\`) — offline" >> "$TMP_OUTPUT"
   fi
 
   new_status+="$addr:$name:$current_status"$'\n'
@@ -119,7 +119,7 @@ done
 # ── Footer + atomic publish + write status file ──────────────────────────
 {
   echo
-  echo "_Last update: $(date '+%Y-%m-%d %H:%M:%S')_"
+  echo "Last update: $(date '+%Y-%m-%d %H:%M:%S')"
 } >> "$TMP_OUTPUT"
 
 # Atomic publish: mv ist atomar innerhalb desselben Filesystems, Reader sehen
