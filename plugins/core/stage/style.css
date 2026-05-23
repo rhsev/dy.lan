@@ -86,7 +86,7 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 .btn {
   display: block; width: 100%;
   position: relative;                /* Anker für .agent-badge */
-  padding: 9px 12px; margin-bottom: 7px;
+  padding: 9px 12px; margin-bottom: 9px;
   border: none; border-radius: 7px;
   font-size: 13px; font-weight: 600;
   text-align: left; cursor: pointer;
@@ -122,17 +122,18 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 .btn:active { transform: scale(0.96); }
 
 .btn-action { background: var(--n10); color: var(--n6); }
-.btn-stream { background: var(--teal); }
+.btn-stream { background: var(--teal); color: var(--n6); }
 .btn-sheet  { background: var(--pur);  color: var(--n6); }
 .btn-notes  { background: var(--pur);  color: var(--n6); }
 .btn-input  { background: var(--n9);   color: var(--n6); }
-.btn-jobs   { background: var(--yel);  }
+.btn-jobs   { background: var(--yel);  color: var(--n0); }
 
 .btn.loading { opacity: 0.5; pointer-events: none; }
 
 .btn.active {
-  outline: 2px solid rgba(236, 239, 244, 0.45);
-  outline-offset: -2px;
+  outline: 2px solid var(--grn);
+  outline-offset: 1px;
+  box-shadow: inset 0 0 0 1px var(--n0);
 }
 
 /* ── Panel ──────────────────────────────────────────────── */
