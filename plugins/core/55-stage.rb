@@ -89,18 +89,23 @@ class StageBase < Dylan::Plugin
     Dylan::Response.html(render_html)
   end
 
+  # Hinweis zu URL-Encoding: source_id und filename kommen bereits URL-encoded
+  # aus der Stage-Route (Browser's encodeURIComponent → Stage-Regex captured
+  # die rohe Form). Wir geben sie unverändert an Milan weiter — ein erneutes
+  # URI.encode_www_form_component würde "%20" zu "%2520" doppel-encoden und
+  # Dateien mit Leerzeichen unauffindbar machen.
+
   def handle_note_list(source_id)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
-      response = Dylan::Milan.get(notes_agent, "/notes/#{URI.encode_www_form_component(source_id)}")
+      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}")
       Dylan::Response.json(JSON.parse(response.body.empty? ? '[]' : response.body))
     end
   end
 
   def handle_note_render(source_id, filename)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
-      name = File.basename(filename)
-      response = Dylan::Milan.get(notes_agent,
-                                  "/notes/#{URI.encode_www_form_component(source_id)}/#{URI.encode_www_form_component(name)}")
+      name = File.basename(filename)  # blockt Path-Traversal in der Datei-Komponente
+      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}/#{name}")
 
       # Rewrite relative asset paths so browser fetches via Dylan (instance-aware)
       prefix = self.class.url_prefix
@@ -114,8 +119,7 @@ class StageBase < Dylan::Plugin
 
   def handle_note_asset(source_id, asset_path)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
-      response = Dylan::Milan.get(notes_agent,
-                                  "/notes/#{URI.encode_www_form_component(source_id)}/assets/#{asset_path}")
+      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}/assets/#{asset_path}")
       ct   = response.headers['content-type'] || 'application/octet-stream'
       body = Protocol::HTTP::Body::Buffered.wrap(response.body)
       Async::HTTP::Protocol::Response[200, { 'content-type' => ct }, body]
