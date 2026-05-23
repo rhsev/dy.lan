@@ -30,3 +30,9 @@ stage:
           label: "🐢 Slow Endpoint (2s)"
           type: action
           url: "/dylan/slow"
+
+        - id: table
+          label: "📐 Plugin Table"
+          type: action
+          url: "/dylan/table"
+          format: nowrap

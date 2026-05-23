@@ -46,11 +46,31 @@ class MaintenancePlugin < Dylan::Plugin
       handle_stats(request)
     when %r{^/dylan/slow(?:/(\d+))?$}
       handle_slow(Regexp.last_match(1)&.to_i)
+    when '/dylan/table'
+      handle_table
     when '/dylan', '/dylan/'
       Dylan::Response.redirect('/manage')
     else
       Dylan::Response.not_found
     end
+  end
+
+  # GET /dylan/table — Plugins als formatierte Texttabelle (nowrap-Demo).
+  def handle_table
+    return error_no_router unless @router
+    plugins = collect_plugins
+
+    prio_w    = 4
+    name_w    = plugins.map { |p| p[:name].length }.max || 0
+    pattern_w = plugins.map { |p| p[:pattern].length }.max || 0
+
+    sep  = "#{'-' * prio_w}  #{'-' * name_w}  #{'-' * pattern_w}"
+    header = "#{'PRI'.ljust(prio_w)}  #{'PLUGIN'.ljust(name_w)}  PATTERN"
+    rows = plugins.map { |p|
+      "#{p[:priority].to_s.ljust(prio_w)}  #{p[:name].ljust(name_w)}  #{p[:pattern]}"
+    }
+
+    Dylan::Response.text([header, sep, *rows].join("\n"))
   end
 
   # GET /dylan/slow[/<ms>] — Async-Sleep für Performance-Tests.

@@ -209,8 +209,9 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
   color: var(--n5);
 }
 
-.output-box.ok    { border-color: var(--grn); border-width: 2px; }
-.output-box.error { border-color: var(--red); border-width: 2px; color: var(--red); }
+.output-box.ok     { border-color: var(--grn); border-width: 2px; }
+.output-box.error  { border-color: var(--red); border-width: 2px; color: var(--red); }
+.output-box.nowrap { white-space: pre; overflow-x: auto; word-break: normal; }
 
 /* LIVE badge */
 .live-badge {

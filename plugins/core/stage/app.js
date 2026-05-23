@@ -104,10 +104,10 @@ document.querySelectorAll('.btn').forEach(btn => {
     // Drawer schliessen auf Mobile, damit der Panel-Inhalt sichtbar wird
     if (isMobile()) setDrawer(false);
 
-    const { type, id, url, placeholder, source } = btn.dataset;
+    const { type, id, url, placeholder, source, format } = btn.dataset;
 
-    if      (type === 'action')   runAction(id, url, btn);
-    else if (type === 'stream')   runStream(id, btn);
+    if      (type === 'action')   runAction(id, url, btn, format);
+    else if (type === 'stream')   runStream(id, btn, format);
     else if (type === 'input')    renderInput(id, url, placeholder, btn);
     else if (type === 'jobs')     loadJobs(btn);
     else if (type === 'notes')    loadNotes(source || id || 'cheaters', btn);
@@ -116,15 +116,16 @@ document.querySelectorAll('.btn').forEach(btn => {
 });
 
 /* ── Action ─────────────────────────────────────────────── */
-async function runAction(id, url, btn) {
+async function runAction(id, url, btn, format) {
   setPanel(`<div class="output-label">Action · ${esc(id)}</div>
             <div class="output-box">Calling ${esc(url)} …</div>`);
   try {
     const res  = await fetch(url);
     const text = await res.text();
+    const fmt  = format === 'nowrap' ? ' nowrap' : '';
     setPanel(`
       <div class="output-label">Output · ${esc(id)}</div>
-      <div class="output-box ${res.ok ? 'ok' : 'error'}">${esc(text.trim() || '(no output)')}</div>
+      <div class="output-box${fmt} ${res.ok ? 'ok' : 'error'}">${esc(text.trim() || '(no output)')}</div>
     `);
   } catch (e) {
     setPanel(`<div class="output-box error">${esc(e.message)}</div>`);
@@ -175,13 +176,14 @@ function renderInput(id, baseUrl, placeholder, btn) {
 }
 
 /* ── Stream ─────────────────────────────────────────────── */
-function runStream(id, btn) {
+function runStream(id, btn, format) {
+  const fmt = format === 'nowrap' ? ' nowrap' : '';
   setPanel(`
     <div class="output-label">
       Stream · ${esc(id)}
       <span class="live-badge" id="live-badge">LIVE</span>
     </div>
-    <div class="output-box" id="stream-out"></div>
+    <div class="output-box${fmt}" id="stream-out"></div>
   `);
   const out = document.getElementById('stream-out');
 

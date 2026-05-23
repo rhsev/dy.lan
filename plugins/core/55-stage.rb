@@ -298,6 +298,7 @@ class StageBase < Dylan::Plugin
                else                            'action'
                end
         source = CGI.escape_html(btn['source'].to_s)
+        format = CGI.escape_html(btn['format'].to_s)
         agent = badge_agent_for(btn)
         agent_attr  = agent ? %( data-agent="#{CGI.escape_html(agent)}") : ''
         badge_html  = agent ? %(<span class="agent-badge" data-agent="#{CGI.escape_html(agent)}">#{CGI.escape_html(agent)}</span>) : ''
@@ -305,7 +306,7 @@ class StageBase < Dylan::Plugin
           <button class="btn btn-#{type}"
                   data-id="#{id}" data-type="#{type}"
                   data-url="#{url}" data-placeholder="#{placeholder}"
-                  data-source="#{source}"#{agent_attr}>#{badge_html}#{label}</button>
+                  data-source="#{source}" data-format="#{format}"#{agent_attr}>#{badge_html}#{label}</button>
         BTN
       end
       html << %(</div>\n)
