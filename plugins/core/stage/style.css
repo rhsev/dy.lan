@@ -138,6 +138,9 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 .btn-jobs   { background: var(--yel);  color: var(--n0); }
 
 .btn.loading { opacity: 0.5; pointer-events: none; }
+.btn-emoji { margin-right: 5px; }
+.btn-icon  { display: inline-flex; align-items: center; margin-right: 5px; }
+.btn-icon svg { width: 16px; height: 16px; fill: currentColor; opacity: 0.9; vertical-align: middle; }
 
 .btn.active {
   outline: 2px solid var(--grn);
@@ -192,7 +195,9 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
   background: var(--n1);
   border-color: var(--blue);
 }
-.link-icon { font-size: 16px; line-height: 1; flex: 0 0 auto; }
+.link-icon     { font-size: 16px; line-height: 1; flex: 0 0 auto; }
+.link-icon-mdi     { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.link-icon-mdi svg { width: 18px; height: 18px; fill: currentColor; opacity: 0.8; }
 .link-label {
   flex: 1 1 auto;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

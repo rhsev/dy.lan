@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
-# Dylan Plugin: Stage (Multi-Instance-fähig)
+# Dylan Plugin: Stage (multi-instance)
 # Browser-based control panel (Stream Deck style) for Milan actions,
 # live script streaming, cheat sheets, and background job monitoring.
 #
-# **Architektur**: StageBase ist die abstrakte Klasse mit der gesamten Logik.
-# Konkrete Instanzen werden als kleine Subclasses unten definiert — jede mit
-# eigenem URL-Prefix + Config-File. Bugfix in der Basis = automatisch in allen
-# Instanzen.
+# **Architecture**: StageBase is the abstract class holding all logic.
+# Concrete instances are defined as small subclasses below — each with its own
+# URL prefix and config file. A fix in the base propagates to all instances.
 #
 # Routes pro Instance (z.B. mit Prefix /stage):
 #   GET /stage              → Dashboard
@@ -27,7 +26,7 @@ require 'net/http'
 # ── Abstrakte Basis ──────────────────────────────────────────────────────────
 
 class StageBase < Dylan::Plugin
-  abstract     # nicht selbst routen — nur als Basis für konkrete Instanzen
+  abstract     # do not route directly — base class only
   timeout(5.0)
 
   SHEETS_DIR = File.join(__dir__, '..', '..', 'data', 'cheatsheet')
@@ -39,7 +38,7 @@ class StageBase < Dylan::Plugin
   }.freeze
 
   class << self
-    # URL-Prefix dieser Instance (z.B. '/stage' oder '/onstage'). Subclasses setzen das.
+    # URL prefix for this instance (e.g. '/stage'). Set by subclasses.
     def url_prefix(prefix = nil)
       @url_prefix = prefix if prefix
       @url_prefix
@@ -52,12 +51,14 @@ class StageBase < Dylan::Plugin
   end
 
   def call(host, path, request)
-    config        # ggf. Hot-Reload (mtime-Check throttled)
+    config        # hot-reload if needed (mtime check is throttled)
     clean = path.split('?').first
-    # Prefix abschneiden — alle nachfolgenden Regex sind dann instance-unabhängig
+    # Strip prefix so all subsequent regexes are instance-independent
     remainder = clean.sub(/\A#{Regexp.escape(self.class.url_prefix)}/, '')
 
     case remainder
+    when %r{^/assets/icons/([\w-]+\.svg)$}
+      serve_icon(Regexp.last_match(1))
     when %r{^/assets/([\w.-]+)$}
       @assets.serve(Regexp.last_match(1), request)
     when %r{^/notes/([^/]+)/assets/(.+)$}
@@ -92,11 +93,9 @@ class StageBase < Dylan::Plugin
     Dylan::Response.html(render_html)
   end
 
-  # Hinweis zu URL-Encoding: source_id und filename kommen bereits URL-encoded
-  # aus der Stage-Route (Browser's encodeURIComponent → Stage-Regex captured
-  # die rohe Form). Wir geben sie unverändert an Milan weiter — ein erneutes
-  # URI.encode_www_form_component würde "%20" zu "%2520" doppel-encoden und
-  # Dateien mit Leerzeichen unauffindbar machen.
+  # URL-encoding note: source_id and filename arrive already URL-encoded from
+  # the browser (encodeURIComponent). We forward them to Milan as-is — re-encoding
+  # would turn "%20" into "%2520" and make files with spaces unreachable.
 
   def handle_note_list(source_id)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
@@ -129,6 +128,42 @@ class StageBase < Dylan::Plugin
     end
   end
 
+  ICONS_DIR = File.join(ASSETS_DIR, 'icons')
+
+  # Renders a button icon: emoji directly, mdi:<name> as inline SVG.
+  # Inline SVG allows CSS color control via currentColor — no filter trick needed.
+  # SVG content is cached (one file read per icon).
+  def render_btn_icon(icon, _prefix)
+    return '' if icon.empty?
+    if icon.start_with?('mdi:')
+      name = icon.sub('mdi:', '').gsub(/[^\w-]/, '')  # nur sichere Zeichen
+      svg  = inline_icon(name)
+      svg ? %(<span class="btn-icon">#{svg}</span>) : ''
+    else
+      %(<span class="btn-emoji">#{CGI.escape_html(icon)}</span>)
+    end
+  end
+
+  def inline_icon(name)
+    @icon_cache ||= {}
+    @icon_cache[name] ||= begin
+      path = File.join(ICONS_DIR, "#{name}.svg")
+      return nil unless File.exist?(path)
+      # rewrite fill to currentColor so CSS controls the colour
+      File.read(path).sub(/\bfill="[^"]*"/, '').sub('<path ', '<path fill="currentColor" ')
+    end
+  end
+
+  def serve_icon(filename)
+    path = File.join(ICONS_DIR, filename)
+    return Dylan::Response.error(404, "Icon not found") unless File.exist?(path)
+    body = Protocol::HTTP::Body::Buffered.wrap(File.binread(path))
+    Async::HTTP::Protocol::Response[200,
+      { 'content-type' => 'image/svg+xml',
+        'cache-control' => 'public, max-age=86400' },
+      body]
+  end
+
   def notes_agent
     config['sheets_agent'] || 'mini'
   end
@@ -147,8 +182,8 @@ class StageBase < Dylan::Plugin
     agent_name = url_parts[1].to_s
     milan_path = url_parts[2] ? "/#{url_parts[2]}" : '/'
 
-    # Fehler (auch unbekannter Agent) fliessen über das stream_error-Event;
-    # die Browser-JS in app.js fängt das ab und zeigt es im Output-Frame.
+    # Errors (including unknown agent) flow through the stream_error event;
+    # app.js catches them and displays the message in the output frame.
     Dylan::Response.sse do |body|
       Async do
         Dylan::Milan.proxy_sse(agent_name, milan_path, body)
@@ -158,7 +193,7 @@ class StageBase < Dylan::Plugin
     end
   end
 
-  # Cron hook: fetch pending jobs from all Milan agents, send ntfy, ack.
+  # Cron hook: fetch pending jobs from all Milan agents, send ntfy notification, ack.
   def handle_jobs_check
     results = []
 
@@ -264,8 +299,8 @@ class StageBase < Dylan::Plugin
     sections.flat_map { |s| s['buttons'] || [] }
   end
 
-  # Link-Grid (Flame-Ersatz): pro Sektion eine Liste aus {label, url, icon}.
-  # Wird nur an /links als JSON zurückgegeben; wenn nicht konfiguriert: leer.
+  # Link grid (Flame replacement): one list of {label, url, icon} per section.
+  # Returned as JSON at /links only; empty array when not configured.
   def link_sections
     (config['links'] || []).map do |sec|
       items = (sec['items'] || []).map do |it|
@@ -279,7 +314,7 @@ class StageBase < Dylan::Plugin
     end
   end
 
-  # ── Sidebar ─────────────────────────────────────────────────────────────────
+  # ── Sidebar ────────────────────────────────────────────────────────────────
 
   def render_sidebar
     html = +''
@@ -298,8 +333,9 @@ class StageBase < Dylan::Plugin
                when 'jobs'                then 'jobs'
                else                            'action'
                end
-        source = CGI.escape_html(btn['source'].to_s)
-        format = CGI.escape_html(btn['format'].to_s)
+        source    = CGI.escape_html(btn['source'].to_s)
+        format    = CGI.escape_html(btn['format'].to_s)
+        icon_html = render_btn_icon(btn['icon'].to_s, self.class.url_prefix)
         agent = badge_agent_for(btn)
         agent_attr  = agent ? %( data-agent="#{CGI.escape_html(agent)}") : ''
         badge_html  = agent ? %(<span class="agent-badge" data-agent="#{CGI.escape_html(agent)}">#{CGI.escape_html(agent)}</span>) : ''
@@ -307,7 +343,7 @@ class StageBase < Dylan::Plugin
           <button class="btn btn-#{type}"
                   data-id="#{id}" data-type="#{type}"
                   data-url="#{url}" data-placeholder="#{placeholder}"
-                  data-source="#{source}" data-format="#{format}"#{agent_attr}>#{badge_html}#{label}</button>
+                  data-source="#{source}" data-format="#{format}"#{agent_attr}>#{badge_html}#{icon_html}#{label}</button>
         BTN
       end
       html << %(</div>\n)
@@ -315,11 +351,11 @@ class StageBase < Dylan::Plugin
     html
   end
 
-  # Welcher Agent kriegt das Badge für diesen Button?
-  # - action/stream/input: ergibt sich aus dem ersten URL-Segment
-  # - notes/cheatsheet:    nutzt den konfigurierten sheets_agent (Default: mini)
-  # - jobs:                aggregiert alle Agents → kein einzelner Badge
-  # Liefert nil wenn kein Milan-Agent zugeordnet werden kann.
+  # Which agent gets the badge for this button?
+  # - action/stream/input: derived from the first URL segment
+  # - notes/cheatsheet:    uses the configured sheets_agent (default: mini)
+  # - jobs:                aggregates all agents → no single badge
+  # Returns nil if no Milan agent can be associated.
   def badge_agent_for(btn)
     case btn['type']
     when 'notes', 'cheatsheet'
@@ -332,7 +368,7 @@ class StageBase < Dylan::Plugin
     end
   end
 
-  # Erstes URL-Segment, sofern es einem konfigurierten Milan-Agent entspricht.
+  # First URL segment if it matches a configured Milan agent name.
   def milan_agent_in_url(url)
     return nil if url.to_s.empty?
     segment = url.to_s.sub(%r{^/}, '').split('/').first
@@ -343,9 +379,9 @@ class StageBase < Dylan::Plugin
   # ── HTML ───────────────────────────────────────────────────────────────────
 
   def render_html
-    # Template wird beim ersten Render geladen UND der instance-spezifische
-    # {{PREFIX}}-Marker eingesetzt (passiert nur einmal pro Instance) — danach
-    # bei jedem Render nur noch die dynamischen Felder (Title + Sidebar).
+    # Template is loaded once and the instance-specific {{PREFIX}} placeholder
+    # is substituted on first render — subsequent renders only replace the
+    # dynamic fields (title and sidebar).
     @html_template ||= File.read(File.join(ASSETS_DIR, 'index.html'))
                             .gsub('{{PREFIX}}', self.class.url_prefix)
     @html_template.gsub('{{TITLE}}',   CGI.escape_html(stage_title))
@@ -353,10 +389,10 @@ class StageBase < Dylan::Plugin
   end
 end
 
-# ── Konkrete Instanzen ──────────────────────────────────────────────────────
+# ── Concrete instances ──────────────────────────────────────────────────────
 #
-# StageBase ist abstrakt — konkrete Instanzen leben in eigenen Plugin-Dateien.
-# Jede Instance = ein eigenes URL-Prefix + eine eigene YAML. Beispiele:
+# StageBase is abstract — concrete instances live in separate plugin files.
+# Each instance gets its own URL prefix and YAML config file. Examples:
 #
 #   class MyStage < StageBase
 #     pattern         %r{^/mystage(/|\?|$)}
@@ -365,9 +401,9 @@ end
 #     config_section  'stage'
 #   end
 #
-# Ausgeliefert mit Dylan:
-#   - `plugins/core/91-manage.rb` — Stage-Instance unter /manage, ruft die
-#     Maintenance-Endpoints auf (Routes, Stats, ...).
+# Shipped with Dylan:
+#   - `plugins/core/91-manage.rb` — Stage instance at /manage, wired to the
+#     maintenance endpoints (routes, stats, ...).
 #
-# Eigene Instanzen kommen typischerweise in `plugins/custom/` mit Priority > 55
-# damit sie nach StageBase laden.
+# Custom instances typically go in `plugins/custom/` with priority > 55
+# so they load after StageBase.

@@ -53,6 +53,7 @@ async function loadLinkGrid() {
     const { sections } = await res.json();
     if (!sections || !sections.length) return;
     setPanel(renderLinkGrid(sections));
+    loadMdiIcons(panel);
   } catch (e) { /* Netzwerk-Fehler: Placeholder bleibt */ }
 }
 
@@ -62,10 +63,35 @@ function renderLinkGrid(sections) {
     <div class="link-grid">
       ${(sec.items || []).map(it => `
         <a class="link-card" href="${esc(it.url)}"${external(it.url) ? ' target="_blank" rel="noopener"' : ''}>
-          ${it.icon ? `<span class="link-icon">${esc(it.icon)}</span>` : ''}
+          ${it.icon ? (it.icon.startsWith('mdi:') ? mdiIcon(it.icon.slice(4)) : `<span class="link-icon">${esc(it.icon)}</span>`) : ''}
           <span class="link-label">${esc(it.label)}</span>
         </a>`).join('')}
     </div>`).join('') + '</div>';
+}
+
+const iconCache = {};
+function mdiIcon(name) {
+  return iconCache[name] !== undefined
+    ? iconCache[name]
+    : `<span class="link-icon-mdi-placeholder" data-mdi="${esc(name)}"></span>`;
+}
+
+// Lädt MDI-Icons nachträglich für den Link-Grid (async, nach renderLinkGrid)
+async function loadMdiIcons(container) {
+  const placeholders = container.querySelectorAll('[data-mdi]');
+  for (const el of placeholders) {
+    const name = el.dataset.mdi;
+    if (iconCache[name] === undefined) {
+      try {
+        const res = await fetch(`${PREFIX}/assets/icons/${encodeURIComponent(name)}.svg`);
+        if (res.ok) {
+          const svg = await res.text();
+          iconCache[name] = `<span class="link-icon-mdi">${svg}</span>`;
+        } else { iconCache[name] = ''; }
+      } catch { iconCache[name] = ''; }
+    }
+    if (iconCache[name]) el.outerHTML = iconCache[name];
+  }
 }
 
 function external(url) {
