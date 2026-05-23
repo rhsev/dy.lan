@@ -154,6 +154,40 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 .placeholder svg { opacity: 0.25; }
 .placeholder p   { font-size: 13px; color: var(--n3); }
 
+/* ── Link-Grid (Default-View, Flame-Ersatz) ───────────── */
+.link-grid-wrap { display: flex; flex-direction: column; gap: 18px; }
+.link-grid-title {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px;
+  color: var(--n4); margin: 6px 0 -4px 2px;
+}
+.link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.link-card {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  background: var(--n2);
+  border: 1px solid var(--n3);
+  border-radius: 5px;
+  color: var(--n6);
+  text-decoration: none;
+  font-size: 13px;
+  transition: background 0.15s, border-color 0.15s;
+  overflow: hidden;
+}
+.link-card:hover {
+  background: var(--n1);
+  border-color: var(--blue);
+}
+.link-icon { font-size: 16px; line-height: 1; flex: 0 0 auto; }
+.link-label {
+  flex: 1 1 auto;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* Output label */
 .output-label {
   font-size: 10px; font-weight: 700;

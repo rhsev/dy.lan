@@ -97,6 +97,7 @@ check    "manage page"    "/manage"                     200 "Dylan Maintenance"
 check    "manage assets"  "/manage/assets/style.css"    200
 check    "manage js"      "/manage/assets/app.js"       200
 check    "manage agents"  "/manage/agents/status"       200 "{"
+check    "manage links"   "/manage/links"               200 '"sections"'
 check_ct "manage css"     "/manage/assets/style.css"    "text/css"
 check_ct "manage js ct"   "/manage/assets/app.js"       "javascript"
 

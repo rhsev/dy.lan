@@ -76,6 +76,8 @@ class StageBase < Dylan::Plugin
       handle_jobs_view
     when '/agents/status'
       Dylan::Response.json(Dylan::Milan.health_check)
+    when '/links'
+      Dylan::Response.json({ 'sections' => link_sections })
     else
       handle_index
     end
@@ -259,6 +261,21 @@ class StageBase < Dylan::Plugin
 
   def all_buttons
     sections.flat_map { |s| s['buttons'] || [] }
+  end
+
+  # Link-Grid (Flame-Ersatz): pro Sektion eine Liste aus {label, url, icon}.
+  # Wird nur an /links als JSON zurückgegeben; wenn nicht konfiguriert: leer.
+  def link_sections
+    (config['links'] || []).map do |sec|
+      items = (sec['items'] || []).map do |it|
+        {
+          'label' => it['label'].to_s,
+          'url'   => it['url'].to_s,
+          'icon'  => it['icon'].to_s
+        }
+      end
+      { 'title' => sec['title'].to_s, 'items' => items }
+    end
   end
 
   # ── Sidebar ─────────────────────────────────────────────────────────────────

@@ -30,6 +30,46 @@ async function refreshAgentStatus() {
 refreshAgentStatus();
 setInterval(refreshAgentStatus, AGENT_POLL_INTERVAL);
 
+/* ── Link-Grid (Default-View, Flame-Ersatz) ────────────── */
+/* Lädt beim Start /links und zeigt ein Grid aus anklickbaren Links im
+   Panel. Wenn die Stage-Instance keine `links:`-Section in der YAML hat,
+   bleibt der HTML-Placeholder (»Button wählen«) sichtbar. */
+async function loadLinkGrid() {
+  try {
+    const res = await fetch(PREFIX + '/links', { cache: 'no-store' });
+    if (!res.ok) return;
+    const { sections } = await res.json();
+    if (!sections || !sections.length) return;
+    setPanel(renderLinkGrid(sections));
+  } catch (e) { /* Netzwerk-Fehler: Placeholder bleibt */ }
+}
+
+function renderLinkGrid(sections) {
+  return '<div class="link-grid-wrap">' + sections.map(sec => `
+    <h3 class="link-grid-title">${esc(sec.title)}</h3>
+    <div class="link-grid">
+      ${(sec.items || []).map(it => `
+        <a class="link-card" href="${esc(it.url)}"${external(it.url) ? ' target="_blank" rel="noopener"' : ''}>
+          ${it.icon ? `<span class="link-icon">${esc(it.icon)}</span>` : ''}
+          <span class="link-label">${esc(it.label)}</span>
+        </a>`).join('')}
+    </div>`).join('') + '</div>';
+}
+
+function external(url) {
+  return /^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith(location.origin);
+}
+
+// Klick auf den Stage-Titel oben → zurück zur Home-Ansicht (Grid).
+document.querySelector('header h1')?.addEventListener('click', () => {
+  if (activeStream) { activeStream.close(); activeStream = null; }
+  if (activeBtn)    { activeBtn.classList.remove('active'); activeBtn = null; }
+  loadLinkGrid();
+});
+document.querySelector('header h1')?.style.setProperty('cursor', 'pointer');
+
+loadLinkGrid();
+
 /* ── Mobile-Drawer ─────────────────────────────────────── */
 const MOBILE_BREAKPOINT = 700;
 const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT;
