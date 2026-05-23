@@ -12,6 +12,15 @@ docker compose up -d
 
 Access the dashboard at `http://localhost:8080/dylan`
 
+After the first build, updates only require a restart — no rebuild:
+
+```bash
+git pull
+docker restart dylan
+```
+
+Only Gemfile changes require a new image build (`docker compose up -d --build`).
+
 ---
 
 ## Configuration
@@ -82,7 +91,7 @@ Plugins that error 5+ times are automatically disabled. Check status at `/dylan/
 
 ### Performance
 
-- ~30 MB RAM
+- ~24 MB RAM
 - ~20ms response time
 - 5,000+ req/s (Mac mini M4), 2,000+ req/s (Synology DS224+)
 

@@ -10,11 +10,16 @@ services:
     ports:
       - "8080:80"
 
+    # Volume mounts override the baked-in code from the image.
+    # After a git pull, a container restart picks up all changes — no rebuild needed.
+    # Only add/remove gems (Gemfile) requires a new image build.
     volumes:
-      - ./data:/app/data:rw
-      - ./config:/app/config:ro
-      - ./scripts:/app/scripts:ro
+      - ./server.rb:/app/server.rb:ro
+      - ./lib:/app/lib:ro
       - ./plugins:/app/plugins:ro
+      - ./scripts:/app/scripts:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data:rw
 
     environment:
       - PORT=80
