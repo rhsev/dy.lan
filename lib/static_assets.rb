@@ -62,7 +62,7 @@ module Dylan
 
       entry = @cache[name]
       if entry.nil? || entry[:mtime] != mtime
-        @cache[name] = { body: File.read(path), mtime: mtime }
+        @cache[name] = { body: File.binread(path), mtime: mtime }
       end
 
       body = Protocol::HTTP::Body::Buffered.wrap(@cache[name][:body])

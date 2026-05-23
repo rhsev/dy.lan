@@ -33,8 +33,9 @@ class StageBase < Dylan::Plugin
   SHEETS_DIR = File.join(__dir__, '..', '..', 'data', 'cheatsheet')
   ASSETS_DIR = File.join(__dir__, 'stage')
   ASSET_TYPES = {
-    'style.css' => 'text/css; charset=UTF-8',
-    'app.js'    => 'application/javascript; charset=UTF-8'
+    'style.css'                    => 'text/css; charset=UTF-8',
+    'app.js'                       => 'application/javascript; charset=UTF-8',
+    'MonaspaceArgon-Variable.woff2'   => 'font/woff2'
   }.freeze
 
   class << self

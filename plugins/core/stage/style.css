@@ -1,3 +1,12 @@
+@font-face {
+  font-family: 'Monaspace Argon';
+  src: url('MonaspaceArgon-Variable.woff2') format('woff2-variations');
+  font-weight: 100 800;
+  font-stretch: 75% 125%;
+  font-style: normal;
+  font-display: swap;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Nord Palette ──────────────────────────────────────────── */
@@ -18,7 +27,7 @@
   --yel:  #EBCB8B;  /* Nord13 jobs       */
   --grn:  #A3BE8C;  /* Nord14 success    */
   --pur:  #B48EAD;  /* Nord15 sheet      */
-  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace;
+  --mono: 'Monaspace Argon', 'Fira Code', 'SF Mono', 'Cascadia Code', Menlo, monospace;
 }
 
 html, body { height: 100%; overflow: hidden; }
