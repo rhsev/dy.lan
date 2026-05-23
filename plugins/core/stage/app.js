@@ -9,10 +9,16 @@ let activeStream = null;
 /* ── Agent-Health-Polling ──────────────────────────────── */
 /* Holt alle 30s den Online-Status der konfigurierten Milan-Agents und
    aktualisiert die kleinen Badges auf den Buttons. Server-Cache (8s) deckelt
-   die Last falls mehrere Tabs gleichzeitig pollen. */
+   die Last falls mehrere Tabs gleichzeitig pollen.
+   Wenn die Stage-Instance keine Buttons mit Agent-Badges hat (reine Link-Page),
+   sparen wir uns das Polling komplett — kein fetch, kein Timer im Eventloop. */
 const AGENT_POLL_INTERVAL = 30_000;
 
 async function refreshAgentStatus() {
+  // Tab im Hintergrund → kein Request. Spart Last wenn der Stage-Tab
+  // stundenlang offen aber unbenutzt ist. Beim Sichtbarwerden wird sofort
+  // einmal aktualisiert (siehe visibilitychange-Listener weiter unten).
+  if (document.visibilityState === 'hidden') return;
   try {
     const res = await fetch(PREFIX + '/agents/status', { cache: 'no-store' });
     if (!res.ok) return;
@@ -27,8 +33,14 @@ async function refreshAgentStatus() {
     /* Netzwerkfehler: aktuelle Badges so lassen */
   }
 }
-refreshAgentStatus();
-setInterval(refreshAgentStatus, AGENT_POLL_INTERVAL);
+if (document.querySelector('.agent-badge')) {
+  refreshAgentStatus();
+  setInterval(refreshAgentStatus, AGENT_POLL_INTERVAL);
+  // Tab wieder aktiv → sofort frische Badges, statt bis zu 30s zu warten
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshAgentStatus();
+  });
+}
 
 /* ── Link-Grid (Default-View, Flame-Ersatz) ────────────── */
 /* Lädt beim Start /links und zeigt ein Grid aus anklickbaren Links im
