@@ -87,7 +87,11 @@ module Dylan
       def stream(agent_name, path)
         response = client_for(agent_name).get(path)
         if response.status == 200
-          response.body.each { |chunk| yield chunk }
+          begin
+            response.body.each { |chunk| yield chunk }
+          ensure
+            response.body.close rescue nil  # Milan-Verbindung sauber freigeben
+          end
         else
           raise UnreachableError.new(agent_name, "HTTP #{response.status}: #{response.read.to_s.strip}")
         end
