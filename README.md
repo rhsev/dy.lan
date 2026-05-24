@@ -30,6 +30,10 @@ script emits a `MILAN_PROMPT` line; Stage renders it as a text input.
 You type a name, `hello.rb` runs on the Mac, the notification pops up
 there. Multi-step workflows without a web framework.
 
+![Stage in action](docs/counter.gif)
+
+*GIF: counter stream from a Mac script, a workflow trigger, and a cheat sheet rendered as HTML*
+
 ---
 
 ## Why Dylan?
@@ -69,6 +73,9 @@ a new image build.
 
 > For host-based routing (`http://sync.lan`), give Dylan its own IP via a
 > Docker macvlan network. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+![Stats](docs/stats.png)
+*Dylan maintenance dashboard: routes, stats and diagnostics in terminal style*
 
 ---
 
@@ -117,7 +124,10 @@ See [PLUGINS.md](PLUGINS.md) for the full plugin API.
 
 ## Stage - the front end
 
-Stage is an automation UI. It's itself a Dylan plugin (`plugins/core/55-stage.rb`). You can start scripts on the server, trigger actions on the Mac, you get the live terminal stream of an action. 
+Stage is an automation UI. It's itself a Dylan plugin (`plugins/core/55-stage.rb`). You can start scripts on the server, trigger actions on the Mac, you get the live terminal stream of an action.
+
+![Stage](docs/stage.png)
+*Stage: link grid as landing page, action results stream into the right panel*
 
 Each button is defined in YAML with a type:
 
