@@ -3,16 +3,17 @@
 require_relative 'response'
 
 module Dylan
-  # Static-Asset-Server für Plugin-Frontend-Bundles.
+  # Static asset server for plugin frontend bundles.
   #
-  # Liefert Dateien aus einem Verzeichnis mit zweistufigem Caching:
-  #   - **Server-Memory-Cache**: Datei wird gelesen, mit mtime-Marker abgelegt.
-  #     Bei nächstem Request mit unverändertem mtime → kein File-Read.
-  #     Bei geändertem mtime → neu einlesen (Edits live wirksam ohne Restart).
-  #   - **Browser-ETag-Cache**: ETag = mtime epoch. `cache-control: no-cache`
-  #     zwingt den Browser zu revalidieren; bei Match → 304 (kein Body, ~100 Byte).
+  # Serves files from a directory with two-level caching:
+  #   - **Server memory cache**: file is read once and stored with its mtime.
+  #     On subsequent requests with unchanged mtime → no file read.
+  #     On changed mtime → re-read (edits are live without restart).
+  #   - **Browser ETag cache**: ETag = mtime epoch. `cache-control: no-cache`
+  #     forces revalidation; on match → 304 (no body, ~100 bytes).
+  #     Font files (font/*) use `immutable` instead — no revalidation needed.
   #
-  # Verwendung im Plugin:
+  # Usage in a plugin:
   #
   #   ASSET_TYPES = {
   #     'style.css' => 'text/css; charset=UTF-8',
@@ -33,8 +34,8 @@ module Dylan
   #     end
   #   end
   #
-  # `types` ist gleichzeitig eine Whitelist — Dateinamen die nicht enthalten
-  # sind kriegen 404, unabhängig davon ob sie im Verzeichnis existieren.
+  # `types` doubles as a whitelist — filenames not listed return 404
+  # regardless of whether they exist on disk.
   class StaticAssets
     def initialize(dir:, types:)
       @dir   = dir
@@ -42,10 +43,10 @@ module Dylan
       @cache = {}
     end
 
-    # Returnt eine Async::HTTP-Response:
-    #   - 200 + Body wenn neu/geändert
-    #   - 304 + leerer Body wenn Browser-ETag aktuell ist
-    #   - 404 wenn Datei nicht in der Types-Whitelist oder nicht vorhanden
+    # Returns an Async::HTTP response:
+    #   - 200 + body if new or changed
+    #   - 304 + empty body if browser ETag matches
+    #   - 404 if file is not in the types whitelist or does not exist
     def serve(name, request)
       ct = @types[name]
       return Dylan::Response.error(404, "Asset '#{name}' not found") unless ct
@@ -54,7 +55,7 @@ module Dylan
       mtime = File.mtime(path)
       etag  = %("#{mtime.to_i}")
 
-      # request.headers[] kann String oder Array sein — defensiv flatten
+      # headers[] can be a string or array — flatten defensively
       inm = Array(request.headers['if-none-match']).flatten.join(',')
       if !inm.empty? && (inm == '*' || inm.include?(etag))
         return Async::HTTP::Protocol::Response[304, { 'etag' => etag }, []]
@@ -65,9 +66,10 @@ module Dylan
         @cache[name] = { body: File.binread(path), mtime: mtime }
       end
 
+      cache_control = ct.start_with?('font/') ? 'public, max-age=31536000, immutable' : 'no-cache'
       body = Protocol::HTTP::Body::Buffered.wrap(@cache[name][:body])
       Async::HTTP::Protocol::Response[200,
-        { 'content-type' => ct, 'etag' => etag, 'cache-control' => 'no-cache' },
+        { 'content-type' => ct, 'etag' => etag, 'cache-control' => cache_control },
         body]
     rescue Errno::ENOENT
       Dylan::Response.error(404, "Asset '#{name}' not found")
