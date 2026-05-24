@@ -931,6 +931,10 @@ Use async-http for non-blocking API calls:
 ```ruby
 require 'async/http/internet'
 
+# Note: prefer Dylan::HttpPool over Async::HTTP::Internet for requests to the
+# same host — the pool reuses connections across requests instead of opening
+# a new one each time. Async::HTTP::Internet is fine for one-off calls to
+# varying external hosts.
 class AsyncAPIPlugin < Dylan::Plugin
   pattern(%r{^/api/weather/(.+)$})
   timeout(5.0)  # External API needs more time
