@@ -10,11 +10,12 @@ Complete guide for developing, testing, and extending Dylan via plugins.
 2. [Plugin Folder Structure](#plugin-folder-structure)
 3. [Built-in Libraries](#built-in-libraries)
 4. [Plugin Configuration (DSL)](#plugin-configuration-dsl)
-5. [Development Environment](#development-environment)
-6. [Testing Plugins](#testing-plugins)
-7. [Debugging](#debugging)
-8. [Best Practices](#best-practices)
-9. [Advanced Topics](#advanced-topics)
+5. [Stage — Multi-Instance UI Plugin](#multi-instance-plugins-stagebase-pattern)
+6. [Development Environment](#development-environment)
+7. [Testing Plugins](#testing-plugins)
+8. [Debugging](#debugging)
+9. [Best Practices](#best-practices)
+10. [Advanced Topics](#advanced-topics)
 
 ---
 
@@ -91,11 +92,11 @@ end
    - Once a plugin returns a response, routing stops
    - Failed plugins don't stop routing (error handling continues to next plugin)
 
-4. **Reload**: Restart container to reload plugins
+4. **Reload**: Trigger hot-reload without restarting the container
    ```bash
+   curl http://localhost:8080/reload
+   # or restart the container for a full reset:
    docker restart dylan
-   # or trigger from inside Dylan:
-   curl http://localhost:8080/dylan/reload
    ```
 
 ---
@@ -110,9 +111,12 @@ controls priority across folders, not within them).
 plugins/
 ├── core/      # functionally essential, shipped with Dylan
 │   ├── 00-host-redirects.rb
+│   ├── 05-favicon.rb
 │   ├── 35-milan-connect.rb
 │   ├── 50-simple-redirects.rb
+│   ├── 55-stage.rb          # StageBase + ManageStage instance
 │   ├── 90-maintenance.rb
+│   ├── 91-manage.rb         # Stage instance at /manage
 │   └── 95-whoami.rb
 ├── extra/     # public, ships with Dylan (demos, anonymized variants)
 │   ├── 10-checkip.rb
@@ -120,7 +124,7 @@ plugins/
 │   ├── 60-weather-demo.rb
 │   └── 65-monitor.rb
 └── custom/    # your private plugins — gitignored
-    └── 80-my-personal-plugin.rb
+    └── 56-my-stage.rb       # example: private Stage instance
 ```
 
 **Where should your plugin go?**
@@ -243,11 +247,91 @@ end
 **Other class-level DSLs:**
 
 - `abstract` — marks this class as a non-routing base. Used when several
-  concrete plugins share a base class. See the `StageBase`/`StagePlugin`
-  pattern for multi-instance plugins (different URL prefixes + configs, same
-  logic).
+  concrete plugins share a base class (see Stage below).
 - `pattern(regex)` — URL match. Set once per concrete class.
 - `timeout(seconds)` — per-plugin request timeout (default 0.5s).
+
+### Multi-Instance Plugins (StageBase pattern)
+
+When the same logic should run at multiple URL prefixes — each with its own
+config file — define an abstract base class and small concrete subclasses:
+
+```ruby
+# plugins/core/55-stage.rb
+class StageBase < Dylan::Plugin
+  abstract          # do not route directly
+  timeout(5.0)
+
+  class << self
+    def url_prefix(prefix = nil)
+      @url_prefix = prefix if prefix
+      @url_prefix
+    end
+  end
+
+  def call(host, path, request)
+    # all logic here, uses self.class.url_prefix and config
+  end
+end
+
+# plugins/core/91-manage.rb
+class ManageStage < StageBase
+  pattern         %r{^/manage(/|\?|$)}
+  url_prefix      '/manage'
+  config_file     'manage.yaml'
+  config_section  'stage'
+end
+```
+
+Private instances go in `plugins/custom/` with a priority between 55 and 90:
+
+```ruby
+# plugins/custom/56-my-stage.rb
+class MyStage < StageBase
+  pattern         %r{^/stage(/|\?|$)}
+  url_prefix      '/stage'
+  config_file     'stage.yaml'
+  config_section  'stage'
+end
+```
+
+Each instance gets its own YAML config. `StageBase` is shipped in `core/`,
+private instances stay gitignored in `custom/`.
+
+### Stage YAML config
+
+```yaml
+# config/stage.yaml
+stage:
+  title: "My Stage"
+  sheets_agent: "mini"       # Milan agent for cheat sheets
+
+  # Link grid (default landing view)
+  links:
+    - title: "Tools"
+      items:
+        - { label: "Dockhand", url: "http://192.168.1.33:3000", icon: "🚢" }
+        - { label: "Router",   url: "http://192.168.1.1",       icon: "mdi:router" }
+
+  # Sidebar buttons
+  sections:
+    - title: "Actions"
+      buttons:
+        - id: greet
+          label: "👋 Greet"
+          type: stream
+          url: "/mini/stream/greet"
+
+        - id: table
+          label: "📋 Table"
+          type: action
+          url: "/dylan/table"
+          format: nowrap      # preserves column alignment, horizontal scroll
+```
+
+**Button types:** `action`, `stream`, `input`, `notes`, `jobs`
+
+**Icons:** emoji string or `mdi:<name>` (SVG from `plugins/core/stage/icons/`)
 
 ---
 
@@ -525,16 +609,19 @@ dylan/
 ├── plugins/                        # Plugin folders (recursive scan)
 │   ├── core/                       # essential Dylan features
 │   │   ├── 00-host-redirects.rb    # Reverse proxy + host-based redirects
+│   │   ├── 05-favicon.rb           # SVG favicon
 │   │   ├── 35-milan-connect.rb     # Milan-agent forwarding
 │   │   ├── 50-simple-redirects.rb  # YAML-driven redirects
+│   │   ├── 55-stage.rb             # StageBase + all Stage logic
 │   │   ├── 90-maintenance.rb       # Dashboard, /dylan/*
+│   │   ├── 91-manage.rb            # Stage instance at /manage
 │   │   ├── 95-whoami.rb            # Milan identity check
-│   │   └── dylan/                  # Maintenance frontend assets
+│   │   └── stage/                  # Stage frontend assets
 │   │       ├── index.html
-│   │       ├── routes.html
-│   │       ├── stats.html
-│   │       ├── test.html
-│   │       └── style.css
+│   │       ├── app.js
+│   │       ├── style.css
+│   │       ├── MonaspaceArgon-Variable.woff2
+│   │       └── icons/              # MDI SVG icons
 │   ├── extra/                      # Demos & public examples
 │   │   ├── 10-checkip.rb           # Synology CheckIP emulation
 │   │   ├── 30-pattern-redirect.rb  # Pattern-redirect demo
@@ -549,6 +636,7 @@ dylan/
 │
 ├── scripts/
 │   ├── monitor.sh                  # Monitor cron job
+│   ├── smoke.sh                    # Smoke tests for live instance
 │   └── start.sh                    # Container startup
 │
 └── data/                           # Runtime data (gitignored, generated)
