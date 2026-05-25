@@ -133,15 +133,25 @@ class StageBase < Dylan::Plugin
   # Renders a button icon: emoji directly, mdi:<name> as inline SVG.
   # Inline SVG allows CSS color control via currentColor — no filter trick needed.
   # SVG content is cached (one file read per icon).
-  def render_btn_icon(icon, _prefix)
+  # icon_color: named Nord variable (teal, blue, red, grn, yel, pur) or any hex value.
+  def render_btn_icon(icon, _prefix, icon_color = nil)
     return '' if icon.empty?
+    style = icon_color_style(icon_color)
     if icon.start_with?('mdi:')
-      name = icon.sub('mdi:', '').gsub(/[^\w-]/, '')  # nur sichere Zeichen
+      name = icon.sub('mdi:', '').gsub(/[^\w-]/, '')
       svg  = inline_icon(name)
-      svg ? %(<span class="btn-icon">#{svg}</span>) : ''
+      svg ? %(<span class="btn-icon"#{style}>#{svg}</span>) : ''
     else
       %(<span class="btn-emoji">#{CGI.escape_html(icon)}</span>)
     end
+  end
+
+  ICON_COLOR_VARS = %w[teal blue red grn yel pur n9 n10].freeze
+
+  def icon_color_style(color)
+    return '' if color.nil? || color.strip.empty?
+    value = ICON_COLOR_VARS.include?(color) ? "var(--#{color})" : color
+    %( style="color: #{CGI.escape_html(value)}")
   end
 
   def inline_icon(name)
@@ -335,7 +345,7 @@ class StageBase < Dylan::Plugin
                end
         source    = CGI.escape_html(btn['source'].to_s)
         format    = CGI.escape_html(btn['format'].to_s)
-        icon_html = render_btn_icon(btn['icon'].to_s, self.class.url_prefix)
+        icon_html = render_btn_icon(btn['icon'].to_s, self.class.url_prefix, btn['icon_color'])
         agent = badge_agent_for(btn)
         agent_attr  = agent ? %( data-agent="#{CGI.escape_html(agent)}") : ''
         badge_html  = agent ? %(<span class="agent-badge" data-agent="#{CGI.escape_html(agent)}">#{CGI.escape_html(agent)}</span>) : ''
