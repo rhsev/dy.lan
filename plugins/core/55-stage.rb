@@ -314,11 +314,13 @@ class StageBase < Dylan::Plugin
   def link_sections
     (config['links'] || []).map do |sec|
       items = (sec['items'] || []).map do |it|
-        {
+        item = {
           'label' => it['label'].to_s,
           'url'   => it['url'].to_s,
           'icon'  => it['icon'].to_s
         }
+        item['icon_color'] = it['icon_color'].to_s if it['icon_color']
+        item
       end
       { 'title' => sec['title'].to_s, 'items' => items }
     end

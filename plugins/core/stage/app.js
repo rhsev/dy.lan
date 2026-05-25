@@ -63,20 +63,24 @@ function renderLinkGrid(sections) {
     <div class="link-grid">
       ${(sec.items || []).map(it => `
         <a class="link-card" href="${esc(it.url)}"${external(it.url) ? ' target="_blank" rel="noopener"' : ''}>
-          ${it.icon ? (it.icon.startsWith('mdi:') ? mdiIcon(it.icon.slice(4)) : `<span class="link-icon">${esc(it.icon)}</span>`) : ''}
+          ${it.icon ? (it.icon.startsWith('mdi:') ? mdiIcon(it.icon.slice(4), it.icon_color) : `<span class="link-icon">${esc(it.icon)}</span>`) : ''}
           <span class="link-label">${esc(it.label)}</span>
         </a>`).join('')}
     </div>`).join('') + '</div>';
 }
 
 const iconCache = {};
-function mdiIcon(name) {
+function mdiIcon(name, color) {
+  const style = color ? ` style="color: ${nordColor(color)}"` : '';
   return iconCache[name] !== undefined
-    ? iconCache[name]
-    : `<span class="link-icon-mdi-placeholder" data-mdi="${esc(name)}"></span>`;
+    ? iconCache[name].replace('class="link-icon-mdi"', `class="link-icon-mdi"${style}`)
+    : `<span class="link-icon-mdi-placeholder" data-mdi="${esc(name)}" data-color="${esc(color || '')}"></span>`;
 }
 
-// Lädt MDI-Icons nachträglich für den Link-Grid (async, nach renderLinkGrid)
+const NORD_VARS = ['teal','blue','red','grn','yel','pur','n9','n10'];
+function nordColor(c) { return NORD_VARS.includes(c) ? `var(--${c})` : c; }
+
+// Loads MDI icons asynchronously for the link grid (after renderLinkGrid)
 async function loadMdiIcons(container) {
   const placeholders = container.querySelectorAll('[data-mdi]');
   for (const el of placeholders) {
@@ -90,7 +94,11 @@ async function loadMdiIcons(container) {
         } else { iconCache[name] = ''; }
       } catch { iconCache[name] = ''; }
     }
-    if (iconCache[name]) el.outerHTML = iconCache[name];
+    if (iconCache[name]) {
+      const color = el.dataset.color;
+      const style = color ? ` style="color: ${nordColor(color)}"` : '';
+      el.outerHTML = iconCache[name].replace('class="link-icon-mdi"', `class="link-icon-mdi"${style}`);
+    }
   }
 }
 
