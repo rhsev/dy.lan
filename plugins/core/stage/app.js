@@ -148,7 +148,7 @@ async function runAction(id, url, btn, format) {
       <div class="output-label">Output · ${esc(id)}</div>
       <div class="output-box${fmt} ${res.ok ? 'ok' : 'error'}">${esc(text.trim() || '(no output)')}</div>
     `);
-    if (!res.ok) refreshAgentStatus();
+    refreshAgentStatus();
   } catch (e) {
     setPanel(`<div class="output-box error">${esc(e.message)}</div>`);
     refreshAgentStatus();
@@ -280,6 +280,7 @@ function runStream(id, btn, format) {
         }
       }
       if (!done) finish('ok', null);
+      refreshAgentStatus();
     } catch (e) {
       if (!done) finish('error', '\n[connection error]');
       refreshAgentStatus();
