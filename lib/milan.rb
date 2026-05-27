@@ -131,7 +131,7 @@ module Dylan
       # Health-Status aller Agents. Gibt Map { agent_name => 'online'|'degraded'|'offline' } zurück.
       # Server-Cache mit kurzer TTL — verhindert dass mehrere Browser-Tabs/Polling-Loops
       # Milan überproportional belasten.
-      HEALTH_CACHE_TTL = 8  # Sekunden
+      HEALTH_CACHE_TTL = 2  # seconds (low: no polling, only checked on error)
 
       def health_check
         now = Time.now
