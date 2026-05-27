@@ -6,11 +6,13 @@ const PREFIX   = document.body.dataset.prefix || '';
 let activeBtn  = null;
 let activeStream = null;
 
-/* ── Agent-Health (one-shot on load) ───────────────────── */
-/* Checks agent status once on page load — no polling, no background requests.
-   Status rarely changes during a session; a reload shows current state.
-   Skipped entirely if no agent badges are present on the page. */
+/* ── Agent-Health ───────────────────────────────────────── */
+/* iPhone: one-shot on load only — no polling, no post-action refresh.
+   Desktop: one-shot on load + poll every 5 minutes + refresh after actions. */
+const IS_IPHONE = /iPhone/.test(navigator.userAgent);
+
 async function refreshAgentStatus() {
+  if (IS_IPHONE) return;
   try {
     const res = await fetch(PREFIX + '/agents/status', { cache: 'no-store' });
     if (!res.ok) return;
@@ -25,8 +27,23 @@ async function refreshAgentStatus() {
     /* network error: leave badges as-is */
   }
 }
+
 if (document.querySelector('.agent-badge')) {
-  refreshAgentStatus();
+  // initial check on all devices
+  (async () => {
+    try {
+      const res = await fetch(PREFIX + '/agents/status', { cache: 'no-store' });
+      if (!res.ok) return;
+      const status = await res.json();
+      document.querySelectorAll('.agent-badge').forEach(badge => {
+        const s = status[badge.dataset.agent];
+        badge.classList.remove('online', 'degraded', 'offline');
+        if (s) badge.classList.add(s);
+      });
+    } catch (e) { /* leave badges as-is */ }
+  })();
+  // desktop only: poll every 5 minutes
+  if (!IS_IPHONE) setInterval(refreshAgentStatus, 5 * 60 * 1000);
 }
 
 /* ── Link-Grid (Default-View, Flame-Ersatz) ────────────── */
