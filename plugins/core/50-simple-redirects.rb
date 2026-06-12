@@ -18,8 +18,8 @@ class SimpleRedirectsPlugin < Dylan::Plugin
   end
 
   def match?(host, path)
+    config       # Hot-Reload zuerst — der Domain-Check darf keine stale Liste nutzen
     return false unless @domains.empty? || @domains.include?(host)
-    config       # ggf. Hot-Reload
     @redirects.any? { |r| path.match?(r[:pattern]) }
   end
 

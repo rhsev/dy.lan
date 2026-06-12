@@ -168,7 +168,7 @@ module Dylan
         end
         return @config unless File.exist?(CONFIG_PATH)
 
-        new_config = YAML.load_file(CONFIG_PATH)['milan'] || {}
+        new_config = (YAML.load_file(CONFIG_PATH) || {})['milan'] || {}  # leere Datei → nil
         new_config['agents'] ||= {}
 
         # Pool leeren, wenn sich Agent-URLs geändert haben

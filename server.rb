@@ -27,7 +27,7 @@ PLUGIN_DIR = File.join(__dir__, 'plugins')
 # Check for ZJIT configuration
 runtime_config_path = File.join(__dir__, 'config', 'runtime.yaml')
 if File.exist?(runtime_config_path)
-  runtime_config = YAML.load_file(runtime_config_path)
+  runtime_config = YAML.load_file(runtime_config_path) || {}  # leere Datei → nil
   zjit_enabled = runtime_config.dig('zjit', 'enabled')
 
   if zjit_enabled && !RubyVM::ZJIT.enabled?
@@ -71,8 +71,10 @@ if Dir.exist?(PLUGIN_DIR)
   Dylan::Plugin.registered_plugins.each { router.add_plugin(it) }
 
   # Inject router into MaintenancePlugin (for hot-reload, stats, etc.)
-  # Ruby 4.0: Nutze 'it' Parameter
-  maintenance = router.plugins.find { it.is_a?(MaintenancePlugin) }
+  # String-Vergleich statt is_a?: wenn 90-maintenance.rb nicht laden konnte
+  # (genau dafür gibt es das rescue oben), wäre die Konstante undefiniert
+  # und is_a?(MaintenancePlugin) ein NameError beim Start.
+  maintenance = router.plugins.find { it.class.name == 'MaintenancePlugin' }
   maintenance.router = router if maintenance
 
   puts "-" * 60

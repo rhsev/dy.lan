@@ -22,6 +22,7 @@ require 'cgi'
 require 'json'
 require 'uri'
 require 'net/http'
+require 'time'   # Time.parse in render_jobs_fragment
 
 # ── Abstrakte Basis ──────────────────────────────────────────────────────────
 

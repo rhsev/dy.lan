@@ -19,6 +19,8 @@ module Dylan
         errors_by_plugin: Hash.new(0)
       }
       @disabled_plugins = Set.new  # Circuit breaker: Track disabled plugins
+      @disabled_until   = {}       # plugin_name => Time (Auto-Re-Enable)
+      @error_times      = Hash.new { |h, k| h[k] = [] }  # Fehler-Timestamps im Fenster
       @runtime_config = load_runtime_config
     end
 
@@ -49,28 +51,23 @@ module Dylan
       @plugins.each do |plugin|
         plugin_name = plugin.class.name
 
-        # Circuit breaker: Skip disabled plugins
+        # Circuit breaker: Skip disabled plugins (Auto-Re-Enable nach Cooldown)
         if @disabled_plugins.include?(plugin_name)
-          next
+          next if Time.now < @disabled_until.fetch(plugin_name, Time.now)
+          @disabled_plugins.delete(plugin_name)
+          @disabled_until.delete(plugin_name)
+          @error_times[plugin_name].clear
+          puts "✅ CIRCUIT BREAKER: #{plugin_name} re-enabled after cooldown"
         end
 
         begin
-          # Timeout protection: Use plugin-specific timeout (default 500ms)
-          plugin_timeout = plugin.timeout
+          # match? ist billig (Regex/Lookup) und läuft ohne Timeout-Wrapper;
+          # nur der eigentliche call wird mit dem Plugin-Timeout geschützt.
+          next unless plugin.match?(host, path)
 
-          # Optimization: Only wrap in timeout if custom timeout is set
-          # Default 0.5s timeout is handled by async-http server config
-          response = if plugin_timeout != 0.5
-            Async::Task.current.with_timeout(plugin_timeout) do
-              if match = plugin.match?(host, path)
-                plugin.call(host, path, request)
-              end
-            end
-          else
-            # Fast path: No timeout wrapper for default plugins
-            if match = plugin.match?(host, path)
-              plugin.call(host, path, request)
-            end
+          plugin_timeout = plugin.timeout
+          response = Async::Task.current.with_timeout(plugin_timeout) do
+            plugin.call(host, path, request)
           end
 
           if response
@@ -112,7 +109,7 @@ module Dylan
       config_path = File.join(__dir__, '..', 'config', 'runtime.yaml')
       return default_runtime_config unless File.exist?(config_path)
 
-      YAML.load_file(config_path)
+      YAML.load_file(config_path) || default_runtime_config  # leere Datei → nil
     rescue => e
       puts "WARNING: Could not load runtime.yaml: #{e.message}"
       default_runtime_config
@@ -141,19 +138,31 @@ module Dylan
       plugin_class.build
     end
 
-    # Handle plugin errors with circuit breaker
-    # After 5 errors, disable the plugin to prevent log spam
+    # Handle plugin errors with circuit breaker.
+    # 5 Fehler innerhalb von ERROR_WINDOW Sekunden deaktivieren das Plugin
+    # für DISABLE_COOLDOWN Sekunden (danach Auto-Re-Enable). Vereinzelte
+    # Fehler über Wochen führen so nicht mehr zur Dauer-Abschaltung.
+    ERROR_THRESHOLD  = 5
+    ERROR_WINDOW     = 60    # Sekunden
+    DISABLE_COOLDOWN = 300   # Sekunden
+
     def handle_plugin_error(plugin_name, error_msg, path, location = nil)
       @stats[:errors_by_plugin][plugin_name] += 1
-      error_count = @stats[:errors_by_plugin][plugin_name]
 
-      if error_count >= 5 && !@disabled_plugins.include?(plugin_name)
+      now = Time.now
+      times = @error_times[plugin_name]
+      times << now
+      times.shift while times.first && (now - times.first) > ERROR_WINDOW
+
+      if times.size >= ERROR_THRESHOLD && !@disabled_plugins.include?(plugin_name)
         @disabled_plugins << plugin_name
-        puts "🚨 CIRCUIT BREAKER: #{plugin_name} disabled after #{error_count} errors"
+        @disabled_until[plugin_name] = now + DISABLE_COOLDOWN
+        puts "🚨 CIRCUIT BREAKER: #{plugin_name} disabled for #{DISABLE_COOLDOWN}s " \
+             "(#{times.size} errors in #{ERROR_WINDOW}s)"
       else
         puts "❌ ERROR in #{plugin_name}: #{error_msg} (path: #{path})"
         puts "   Location: #{location}" if location
-        puts "   Error count: #{error_count}/5" if error_count < 5
+        puts "   Error count: #{times.size}/#{ERROR_THRESHOLD} (#{ERROR_WINDOW}s window)"
       end
     end
   end

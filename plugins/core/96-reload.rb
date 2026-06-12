@@ -13,7 +13,9 @@
 # wieder antwortet.
 
 class ReloadPlugin < Dylan::Plugin
-  pattern(%r{^/reload$})
+  # (\?|$): Dylans path enthält den Query-String — mit ^/reload$ wäre
+  # /reload?format=json ein 404 und der JSON-Zweig unerreichbar.
+  pattern(%r{^/reload(\?|$)})
 
   def call(host, path, request)
     format = parse_query(request)['format']

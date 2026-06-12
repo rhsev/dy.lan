@@ -13,6 +13,7 @@
 
 class HostRedirectsPlugin < Dylan::Plugin
   pattern(/.^/)  # match? wird überschrieben — Pattern matcht nichts
+  timeout(10)    # Proxy-Mode wartet auf Backends — 0.5s-Default wäre zu knapp
   config_file 'host-redirects.yaml'
 
   def initialize
@@ -24,8 +25,8 @@ class HostRedirectsPlugin < Dylan::Plugin
   end
 
   def match?(host, path)
+    config       # Hot-Reload zuerst — sonst bleibt eine leere Config für immer leer
     return false if @redirects.empty?
-    config       # ggf. Hot-Reload (mtime-Check throttled)
     @redirects.any? { |r| host.match?(r[:pattern]) }
   end
 
