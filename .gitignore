@@ -1,5 +1,3 @@
-.DS_Store
-.claude/
 local/
 config/host-redirects.yaml
 docker-compose.infrastructure.yml
