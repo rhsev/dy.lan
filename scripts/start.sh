@@ -7,7 +7,8 @@ echo "==> Starting Dylan Server with Cron support"
 mkdir -p /root/.cache
 
 # Install crontab from config (supports volume-mounted config/)
-crontab /app/config/crontab
+# Tolerate a bad crontab line: never let it abort startup (set -e) and crash-loop the container.
+crontab /app/config/crontab || echo "WARN: crontab abgelehnt"
 
 # Start cron in background
 echo "==> Starting crond..."
