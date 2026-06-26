@@ -1,7 +1,7 @@
 FROM ruby:4.0-alpine
 
 # Build dependencies + runtime tools
-RUN apk add --no-cache build-base bash cronie curl git
+RUN apk add --no-cache build-base bash cronie curl git tzdata
 
 WORKDIR /app
 
