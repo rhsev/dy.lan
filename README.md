@@ -261,3 +261,7 @@ Shared as-is. This project was built for use in personal automation workflows. T
 
 Built by Ralf Hülsmann ([GitHub](https://github.com/rhsev)), inspired by Brett Terpstra's Ruby tools and automation philosophy. Featured in Brett's [blog post](https://brettterpstra.com/2026/01/27/a-url-router-that-turns-your-local-network-into-a-workflow-engine/).
 
+
+---
+
+*Part of a family of plain-text tools — the [profile page](https://github.com/rhsev) has the map.*
