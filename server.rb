@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Dylan 1.0 - Async HTTP Server
+# Dylan 1.1 - Async HTTP Server
 # Supports parallel requests via Fibers
 
 require 'socket'
@@ -45,7 +45,7 @@ router = Dylan::Router.new(PLUGIN_DIR)
 
 # Load plugins (sorted alphabetically)
 puts "=" * 60
-puts "Dylan 1.0 - Async Dynamic HTTP Router"
+puts "Dylan 1.1 - Async Dynamic HTTP Router"
 puts "=" * 60
 
 if Dir.exist?(PLUGIN_DIR)

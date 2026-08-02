@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Performance Test for Dylan 1.0
+# Performance Test for Dylan 1.1
 # Compares serial vs. parallel requests
 # Tests async/fiber-based concurrency
 
@@ -21,7 +21,7 @@ rescue => e
 end
 
 puts "=" * 70
-puts "Dylan 1.0 Performance Test (Ruby 4.0)"
+puts "Dylan 1.1 Performance Test (Ruby 4.0)"
 puts "=" * 70
 puts
 
@@ -85,7 +85,7 @@ puts
 
 puts "=" * 70
 puts "Interpretation:"
-puts "  - Async Server (Dylan 1.0): Fast requests respond in ~3-10ms while slow runs"
+puts "  - Async Server (Dylan 1.1): Fast requests respond in ~3-10ms while slow runs"
 puts "  - Sync Server: Fast requests would wait for /dylan/slow (>2000ms total each)"
 puts "  - Ruby 4.0 Fibers: Non-blocking I/O via fiber scheduler (Kernel#sleep yields)"
 puts "=" * 70

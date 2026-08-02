@@ -944,7 +944,7 @@ end
 
 ### Robustness Features
 
-Dylan 1.0 includes automatic robustness features:
+Dylan includes automatic robustness features:
 
 1. **Circuit Breaker**: Plugins that error 5+ times are automatically disabled
 2. **Timeout Protection**: Plugins that exceed their timeout are killed
@@ -1078,7 +1078,7 @@ chmod +x scripts/fetch_weather.sh
 
 ## Ruby 4.0 Features
 
-Dylan 1.0 uses modern Ruby 4.0 features in the core:
+Dylan uses modern Ruby 4.0 features in the core:
 
 ### The `it` Parameter
 
@@ -1165,5 +1165,8 @@ end
 ---
 
 ## Version
+
+**Dylan 1.1** - Widget tiles for the Stage, ANSI rendering, Ruby 4 declared as
+a requirement rather than assumed
 
 **Dylan 1.0** - First release of Ruby 4.0 async HTTP router

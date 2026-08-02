@@ -74,7 +74,7 @@ docker logs dylan -f
 
 You should see:
 ```
-Dylan 1.0 - Async HTTP Server (Ruby 4.0)
+Dylan 1.1 - Async HTTP Server (Ruby 4.0)
 Loading plugins from: /app/plugins
 Server running on http://0.0.0.0:80
 ```
