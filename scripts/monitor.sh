@@ -116,6 +116,59 @@ for name in "${!services[@]}"; do
   fi
 done
 
+# ── LiveSync (headless Daemons; Status + bedingter Auto-Restart) ──────────
+# Fragt beide Macs via mi.lan /livesync ab, schreibt den Status in den Report.
+# Neustart auslösen bei Crash (🔴) ODER Uptime >= Schwellwert (gegen den
+# chokidar/Listener-Leak, der den Watcher erst über Tage stilllegt → 24h,
+# nicht schon beim frühen Warn-Flag). Läuft auf dem zuverlässigen */5-Takt,
+# kein TZ-Problem wie bei einer Stunden-Cron-Zeile.
+RESTART_UPTIME_H=24
+
+# Neustart anfordern und die Antwort NICHT wegwerfen. livesync-restart.rb meldet
+# Fehlschläge im Klartext ("⚠ Neustart fehlgeschlagen — …"), und genau die gingen
+# am 2026-08-01 zwanzig Stunden lang ins Leere: 622 Aufrufe, jedes Mal
+# "sudo: you do not exist in the passwd database", sichtbar nur als stetig
+# steigende Uptime. Ein fehlgeschlagener Neustart muss im Report stehen.
+request_restart() {
+  local ip="$1" name="$2" r
+  r=$(curl -s --max-time 30 "http://$ip:8080/livesync-restart" 2>&1)
+  if [[ -z "$r" ]]; then
+    echo "⚠ LiveSync $name — Neustart-Aufruf ohne Antwort (milan erreichbar?)" >> "$TMP_OUTPUT"
+  elif [[ "$r" == *"⚠"* ]]; then
+    r="${r#⚠ }"                 # eigene Markierung vorn, Meldung dahinter
+    echo "⚠ LiveSync $name — ${r:0:160}" >> "$TMP_OUTPUT"
+  fi
+}
+{
+  echo
+  echo "## LiveSync"
+  echo
+} >> "$TMP_OUTPUT"
+
+for entry in "Mini:192.168.1.118" "Book:192.168.1.195"; do
+  name="${entry%%:*}"; ip="${entry##*:}"
+  out=$(curl -sf --max-time 10 "http://$ip:8080/livesync" 2>/dev/null)
+  if [[ -z "$out" ]]; then
+    echo "⚪ LiveSync $name — milan nicht erreichbar" >> "$TMP_OUTPUT"
+    continue
+  fi
+  up_h=$(echo "$out" | grep -oE "Uptime [0-9]+h" | grep -oE "[0-9]+" | head -1)
+  if echo "$out" | grep -q "gesperrt"; then
+    # Remote-DB gesperrt (z. B. nach iPhone-Rebuild/Doctor) — Neustart hilft NICHT, nur anzeigen.
+    echo "🔒 LiveSync $name — Remote gesperrt, Unlock nötig (kein Neustart)" >> "$TMP_OUTPUT"
+  elif echo "$out" | grep -qiE "Crash|cannot be initialised|OpenError"; then
+    echo "🔴 LiveSync $name — Crash → Neustart" >> "$TMP_OUTPUT"
+    request_restart "$ip" "$name"
+  elif [[ -n "$up_h" && "$up_h" -ge "$RESTART_UPTIME_H" ]]; then
+    echo "🟠 LiveSync $name — Uptime ${up_h}h → präventiver Neustart" >> "$TMP_OUTPUT"
+    request_restart "$ip" "$name"
+  elif echo "$out" | grep -q "gesund"; then
+    echo "🟢 LiveSync $name (${up_h:-?}h)" >> "$TMP_OUTPUT"
+  else
+    echo "🟠 LiveSync $name — Achtung (Detail: Button /livesync)" >> "$TMP_OUTPUT"
+  fi
+done
+
 # ── Footer + atomic publish + write status file ──────────────────────────
 {
   echo

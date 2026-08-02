@@ -28,3 +28,6 @@ redirects:
     target: 'https://brettterpstra.com'
     description: 'Brett Terpstra Blog'
 
+  - pattern: '^/s/(.+)$'
+    target: 'shortcuts://run-shortcut?name=${1}'
+    description: 'shortcut'

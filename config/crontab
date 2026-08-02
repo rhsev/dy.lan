@@ -7,5 +7,9 @@
 # Monitor-Plugin (extra/65-monitor.rb): Network-Health alle 5 Minuten generieren
 */5 * * * * /app/scripts/monitor.sh > /proc/1/fd/1 2>&1
 
-# Stage Plugin (kommt in einer späteren Release): pending Jobs jede Minute abfragen
-# * * * * *   curl -sf http://localhost:8080/stage/jobs/check > /proc/1/fd/1 2>&1
+# Stage-Plugin: pending Jobs jede Minute abfragen
+* * * * *   curl -sf http://localhost:8080/stage/jobs/check > /proc/1/fd/1 2>&1
+
+# LiveSync-Neustart: KEINE eigene Cron-Zeile mehr. Läuft jetzt bedingt über
+# monitor.sh (alle 5 min: Status beider Macs in monitor.md, Neustart nur bei
+# Crash/Uptime>=24h, Lock nur anzeigen). Stunden-Cron war TZ-anfällig (Container-cron = UTC).

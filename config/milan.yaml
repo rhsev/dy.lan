@@ -7,7 +7,7 @@ milan:
   # Milan agents (name -> URL)
   agents:
     mini: "http://192.168.1.118:8080"   # Mac Mini
-    book: "http://192.168.1.188:8080"   # MacBook
+    book: "http://192.168.1.195:8080"   # MacBook
 
   # Tailscale example:
   # agents:
