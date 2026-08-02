@@ -3,6 +3,9 @@ const aside    = document.getElementById('aside');
 const burger   = document.getElementById('menu-toggle');
 const backdrop = document.getElementById('backdrop');
 const PREFIX   = document.body.dataset.prefix || '';
+/* Board mode: > 0 seconds when this instance has widget tiles. The tiles are
+   the home view then, the link grid stays out of the way. */
+const REFRESH  = parseInt(document.body.dataset.refresh || '0', 10) || 0;
 let activeBtn  = null;
 let activeStream = null;
 
@@ -110,15 +113,52 @@ function external(url) {
   return /^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith(location.origin);
 }
 
-// Klick auf den Stage-Titel oben → zurück zur Home-Ansicht (Grid).
+/* ── Widget-Board ──────────────────────────────────────── */
+/* Ein Refresh = ein Request an Dylan, der daraus einen Request an Milan
+   macht. Dylan antwortet mit ETag; im Normalfall ist das ein 304, den der
+   Browser aus dem Cache bedient — kein Rendern, kein Transfer. Deshalb
+   `cache: 'no-cache'` (revalidieren) statt 'no-store' (immer neu holen). */
+let widgetTimer = null;
+let widgetHtml  = null;
+
+function stopWidgetBoard() {
+  if (widgetTimer) { clearInterval(widgetTimer); widgetTimer = null; }
+}
+
+async function loadWidgets() {
+  try {
+    const res  = await fetch(PREFIX + '/widgets', { cache: 'no-cache' });
+    const html = await res.text();
+    if (!res.ok) { setPanel(`<div class="output-box error">${esc(html.trim())}</div>`); return; }
+    // Unveränderte Antwort: DOM nicht anfassen, sonst flackert die Auswahl weg.
+    if (html === widgetHtml) return;
+    widgetHtml = html;
+    setPanel(html);
+  } catch (e) {
+    /* Netzwerk-Fehler: letzte Kacheln stehen lassen, nächster Tick versucht es neu */
+  }
+}
+
+function startWidgetBoard() {
+  stopWidgetBoard();
+  if (activeBtn) { activeBtn.classList.remove('active'); activeBtn = null; }
+  widgetHtml = null;
+  loadWidgets();
+  widgetTimer = setInterval(loadWidgets, REFRESH * 1000);
+}
+
+// Klick auf den Stage-Titel oben → zurück zur Home-Ansicht.
 document.querySelector('header h1')?.addEventListener('click', () => {
   if (activeStream) { activeStream.close(); activeStream = null; }
   if (activeBtn)    { activeBtn.classList.remove('active'); activeBtn = null; }
-  loadLinkGrid();
+  if (REFRESH > 0) startWidgetBoard(); else loadLinkGrid();
 });
 document.querySelector('header h1')?.style.setProperty('cursor', 'pointer');
 
-loadLinkGrid();
+// Ein reines Board hat keine Buttons — dann braucht es auch keine Sidebar.
+if (!aside.querySelector('.btn')) document.body.classList.add('no-sidebar');
+
+if (REFRESH > 0) startWidgetBoard(); else loadLinkGrid();
 
 /* ── Mobile-Drawer ─────────────────────────────────────── */
 const MOBILE_BREAKPOINT = 700;
@@ -134,6 +174,7 @@ backdrop.addEventListener('click', () => setDrawer(false));
 
 document.querySelectorAll('.btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    stopWidgetBoard();   // sonst überschreibt der nächste Tick das Panel
     if (activeStream) { activeStream.close(); activeStream = null; }
     if (activeBtn)    activeBtn.classList.remove('active');
     btn.classList.add('active', 'loading');

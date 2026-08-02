@@ -203,6 +203,106 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* ── Widget-Kacheln (type: widget) ─────────────────────────── */
+/* Board ohne Buttons: keine leere Sidebar, kein Burger-Menü. */
+body.no-sidebar aside,
+body.no-sidebar .menu-toggle { display: none; }
+
+.tile-section {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--n4); margin: 14px 0 8px 2px;
+}
+.tile-section:first-child { margin-top: 0; }
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.tile {
+  background: var(--n2);
+  border: 1px solid var(--n3);
+  border-radius: 9px;
+  padding: 12px 14px;
+  overflow: hidden;
+}
+.tile-head {
+  display: flex; align-items: center; gap: 7px;
+  margin-bottom: 8px;
+}
+.tile-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex: 0 0 auto;
+}
+.tile-label {
+  flex: 1 1 auto; font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tile-time { font-size: 10px; color: var(--n3); flex: 0 0 auto; }
+.tile-text {
+  font-family: var(--mono);
+  font-size: 12px; line-height: 1.55;
+  color: var(--n5);
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 7.5em; overflow: hidden;
+}
+.tile-bar {
+  height: 4px; border-radius: 2px;
+  background: var(--n1);
+  margin-top: 10px; overflow: hidden;
+}
+.tile-bar-fill {
+  height: 100%; border-radius: 2px;
+  background: var(--blue);
+  transition: width 0.3s ease;
+}
+.tile-pct { font-size: 10px; color: var(--n4); margin-top: 4px; text-align: right; }
+
+/* Abgelaufene ttl: die Kachel sollte laufen, tut es aber nicht mehr. Als tot
+   erkennbar, damit niemand alte Zahlen für aktuelle liest. */
+.tile.stale { opacity: 0.45; border-style: dashed; }
+.tile.stale .tile-bar-fill { background: var(--n3); }
+.tile.empty .tile-text     { color: var(--n3); }
+.tile-empty { color: var(--n4); font-size: 13px; }
+
+/* ANSI (lib/ansi.rb) */
+.ansi-bold { font-weight: 700; }
+/* Zuerst der Hintergrund-Grundsatz, danach die Vordergrundfarben —
+   so gewinnt bei "fg + bg" die gesetzte Textfarbe. */
+[class*="ansi-bg-"] { color: var(--n0); padding: 0 2px; border-radius: 2px; }
+.ansi-fg-black   { color: var(--n3);  }
+.ansi-fg-red     { color: var(--red); }
+.ansi-fg-green   { color: var(--grn); }
+.ansi-fg-yellow  { color: var(--yel); }
+.ansi-fg-blue    { color: var(--n10); }
+.ansi-fg-magenta { color: var(--pur); }
+.ansi-fg-cyan    { color: var(--teal);}
+.ansi-fg-white   { color: var(--n5);  }
+.ansi-fg-bright-black   { color: var(--n4);  }
+.ansi-fg-bright-red     { color: var(--org); }
+.ansi-fg-bright-green   { color: var(--grn); }
+.ansi-fg-bright-yellow  { color: var(--yel); }
+.ansi-fg-bright-blue    { color: var(--blue);}
+.ansi-fg-bright-magenta { color: var(--pur); }
+.ansi-fg-bright-cyan    { color: var(--teal);}
+.ansi-fg-bright-white   { color: var(--n6);  }
+.ansi-bg-black   { background: var(--n0);  }
+.ansi-bg-red     { background: var(--red); }
+.ansi-bg-green   { background: var(--grn); }
+.ansi-bg-yellow  { background: var(--yel); }
+.ansi-bg-blue    { background: var(--n10); }
+.ansi-bg-magenta { background: var(--pur); }
+.ansi-bg-cyan    { background: var(--teal);}
+.ansi-bg-white   { background: var(--n5);  }
+.ansi-bg-bright-black   { background: var(--n3);  }
+.ansi-bg-bright-red     { background: var(--org); }
+.ansi-bg-bright-green   { background: var(--grn); }
+.ansi-bg-bright-yellow  { background: var(--yel); }
+.ansi-bg-bright-blue    { background: var(--blue);}
+.ansi-bg-bright-magenta { background: var(--pur); }
+.ansi-bg-bright-cyan    { background: var(--teal);}
+.ansi-bg-bright-white   { background: var(--n6);  }
+
 /* Output label */
 .output-label {
   font-size: 10px; font-weight: 700;

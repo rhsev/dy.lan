@@ -154,6 +154,7 @@ Dylan ships several reusable libraries in `lib/` that plugins can compose:
 | `Dylan::HttpPool` | Reusable `Async::HTTP::Client` pool. Single source for HTTP connection caching. |
 | `Dylan::Milan` | Milan agent registry + cached HTTP clients. `get`, `stream`, `proxy_sse`, error-mapping `rescued` helper. Only relevant when you talk to a Milan companion server. |
 | `Dylan::StaticAssets` | Static file server with ETag + mtime-based hot-reload. For plugins that ship HTML/CSS/JS bundles. |
+| `Dylan::Ansi` | ANSI → HTML for terminal output (`Dylan::Ansi.to_html`). SGR colours, bold, `\r` line rewrites; everything else stripped. |
 
 **Example using Dylan::HttpPool** (reverse-proxy a backend):
 ```ruby
@@ -329,9 +330,45 @@ stage:
           format: nowrap      # preserves column alignment, horizontal scroll
 ```
 
-**Button types:** `action`, `stream`, `input`, `notes`, `jobs`
+**Button types:** `action`, `stream`, `input`, `notes`, `jobs`, `widget`
 
 **Icons:** emoji string or `mdi:<name>` (SVG from `plugins/core/stage/icons/`)
+
+### Widget tiles (`type: widget`)
+
+A widget entry is not a button: it is a passive state tile. Scripts push their
+state to a Milan agent's widget inbox (`POST /widget/<target>`), and the
+instance shows all targets as a grid — one `GET /<agent>/widgets` per refresh,
+no matter how many tiles. An instance that has tiles renders them as its home
+view and polls; the sidebar keeps only the real buttons.
+
+```yaml
+# config/board.yaml
+board:
+  title: "Board"
+  agent: "mini"         # Milan agent whose inbox is read
+  refresh: 3            # seconds between polls (default 3)
+
+  sections:
+    - title: "Läuft"
+      buttons:
+        - id: copy
+          type: widget
+          target: copy        # defaults to id
+          label: "Backup"     # falls back to the pushed title, then the target
+          icon: download
+
+    - title: "Sonstiges"
+      discover: true          # every target no configured tile claims
+```
+
+- **ANSI** in the pushed text is rendered by `Dylan::Ansi` (`lib/ansi.rb`);
+  256-colour and truecolor sequences are stripped rather than guessed at.
+- **`ttl`** comes from the push, not the YAML: with one, the tile greys out
+  when it expires (something that should be running is not); without one it
+  is a slow state and just shows the clock time of the last push.
+- The reply carries an **ETag** over the tile states, so the usual answer to a
+  poll is `304` — no render, no transfer. Expiry is part of the digest.
 
 ---
 
@@ -664,6 +701,16 @@ docker exec -it dylan /bin/sh
 ---
 
 ## Testing Plugins
+
+### Unit tests
+
+Logic that does not need HTTP lives in `lib/` and is tested there — minitest,
+no server, no container:
+
+```bash
+ruby test/ansi_test.rb     # ANSI → HTML renderer
+ruby test/board_test.rb    # widget tiles, discover, ttl, ETag (Milan stubbed)
+```
 
 ### Manual Testing
 

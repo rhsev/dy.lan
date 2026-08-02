@@ -20,6 +20,7 @@ require_relative 'lib/response'
 require_relative 'lib/http_pool'
 require_relative 'lib/static_assets'
 require_relative 'lib/milan'
+require_relative 'lib/ansi'
 
 PORT = ENV.fetch('PORT', 80).to_i
 PLUGIN_DIR = File.join(__dir__, 'plugins')

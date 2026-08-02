@@ -22,7 +22,18 @@ require 'cgi'
 require 'json'
 require 'uri'
 require 'net/http'
-require 'time'   # Time.parse in render_jobs_fragment
+require 'time'    # Time.parse in render_jobs_fragment
+require 'digest'  # ETag over the widget states
+
+# The ANSI renderer lives in lib/ and is normally loaded by server.rb. A
+# deployment that mounts only plugins/ runs the image's server.rb instead —
+# then the plugin fetches it itself. If lib/ is missing there too, tiles lose
+# their colour rather than taking the whole Stage down with them.
+begin
+  require_relative '../../lib/ansi' unless defined?(Dylan::Ansi)
+rescue LoadError => e
+  warn "[Stage] ANSI renderer unavailable (#{e.message}) — tiles render uncoloured"
+end
 
 # ── Abstrakte Basis ──────────────────────────────────────────────────────────
 
@@ -73,6 +84,8 @@ class StageBase < Dylan::Plugin
       handle_note_render(default_notes_source, CGI.unescape(Regexp.last_match(1)))
     when %r{^/run/(.+)$}
       handle_stream_run(Regexp.last_match(1))
+    when '/widgets'
+      handle_widgets(request)
     when '/jobs/check'
       handle_jobs_check
     when '/jobs'
@@ -245,6 +258,161 @@ class StageBase < Dylan::Plugin
     Dylan::Response.html(render_jobs_fragment(all_jobs))
   end
 
+  # ── Widgets (type: widget) ─────────────────────────────────────────────────
+  #
+  # Passive state tiles. Scripts push their state to Milan's widget inbox,
+  # the board shows it. One refresh is **one** request to Milan, no matter how
+  # many tiles — the mapping from target to tile happens here.
+  #
+  # The response carries an ETag over the tile states, so the usual answer to a
+  # poll is 304: no render, no transfer. Staleness is part of the ETag input,
+  # otherwise a tile that just ran out of its ttl would keep the fresh look
+  # until the next push.
+
+  def widget_agent
+    config['agent'] || notes_agent
+  end
+
+  def handle_widgets(request)
+    Dylan::Milan.rescued(widget_agent, label: 'Widgets') do
+      body    = Dylan::Milan.get(widget_agent, '/widgets').body
+      widgets = JSON.parse(body.empty? ? '[]' : body)
+      widgets = [] unless widgets.is_a?(Array)
+
+      etag = widgets_etag(widgets)
+      inm  = Array(request.headers['if-none-match']).flatten.join(',')
+      if !inm.empty? && (inm == '*' || inm.include?(etag))
+        return Async::HTTP::Protocol::Response[304, { 'etag' => etag }, []]
+      end
+
+      html = Protocol::HTTP::Body::Buffered.wrap(render_widget_board(widgets))
+      Async::HTTP::Protocol::Response[200,
+        { 'content-type'  => 'text/html; charset=UTF-8',
+          'etag'          => etag,
+          'cache-control' => 'no-cache' },
+        html]
+    end
+  end
+
+  # Config mtime is part of the digest: renaming a tile in the YAML must show
+  # up even when no script has pushed since.
+  def widgets_etag(widgets)
+    material = widgets.map do |widget|
+      [widget['target'], widget['updated_at'], stale?(widget) ? 1 : 0].join(':')
+    end
+    %("#{Digest::SHA256.hexdigest([config_mtime.to_i, *material].join('|'))[0, 16]}")
+  end
+
+  def stale?(widget)
+    ttl = widget['ttl'].to_i
+    return false if ttl <= 0
+    Time.now.to_i > widget['updated_at'].to_i + ttl
+  end
+
+  # Sections keep their order from the YAML; `discover: true` appends every
+  # target Milan knows that no configured tile claims — that saves maintaining
+  # the YAML for throwaway targets.
+  def render_widget_board(widgets)
+    by_target = widgets.each_with_object({}) { |w, acc| acc[w['target'].to_s] = w }
+    claimed   = all_buttons.select { |b| b['type'] == 'widget' }
+                           .map    { |b| (b['target'] || b['id']).to_s }
+
+    blocks = sections.filter_map do |sec|
+      tiles = (sec['buttons'] || []).select { |b| b['type'] == 'widget' }.map do |btn|
+        target = (btn['target'] || btn['id']).to_s
+        render_widget_tile(btn, by_target[target], target)
+      end
+
+      if sec['discover']
+        (widgets.map { |w| w['target'].to_s } - claimed).each do |target|
+          tiles << render_widget_tile({}, by_target[target], target)
+        end
+      end
+
+      next if tiles.empty?
+      %(<h3 class="tile-section">#{CGI.escape_html(sec['title'].to_s)}</h3>) +
+        %(<div class="tile-grid">#{tiles.join}</div>)
+    end
+
+    return '<div class="tile-empty">Keine Kacheln.</div>' if blocks.empty?
+    %(<div class="tile-board">#{blocks.join}</div>)
+  end
+
+  # A configured tile without data still gets drawn — an empty slot says
+  # "nothing has run yet", a missing slot says nothing at all.
+  def render_widget_tile(btn, widget, target)
+    widget ||= {}
+    label = btn['label'] || widget['title'] || target
+    icon  = (btn['icon'] || widget['icon']).to_s
+    color = (widget['color'] || btn['color']).to_s
+    text  = widget['text'].to_s
+    empty = widget.empty?
+
+    classes = ['tile']
+    classes << 'stale' if stale?(widget)
+    classes << 'empty' if empty
+
+    <<~TILE
+      <div class="#{classes.join(' ')}" data-target="#{CGI.escape_html(target)}">
+        <div class="tile-head">
+          #{widget_dot(color)}#{widget_icon(icon)}
+          <span class="tile-label">#{CGI.escape_html(label.to_s)}</span>
+          <span class="tile-time">#{widget_time(widget)}</span>
+        </div>
+        <div class="tile-text">#{empty ? '–' : render_tile_text(text)}</div>
+        #{widget_bar(widget['progress'])}
+      </div>
+    TILE
+  end
+
+  # Ohne den Renderer bleibt der Text lesbar — nur eben ohne Farben, und mit
+  # sichtbaren Escape-Sequenzen statt stillschweigend eingeschleustem Markup.
+  def render_tile_text(text)
+    defined?(Dylan::Ansi) ? Dylan::Ansi.to_html(text) : CGI.escape_html(text)
+  end
+
+  # Icon names are Dylan's own short vocabulary (download, check, warn …),
+  # resolved against the shared icon set. An unknown name renders nothing —
+  # never an error, and never a broken image.
+  def widget_icon(name)
+    return '' unless name.match?(/\A[\w-]{1,32}\z/)
+    svg = inline_icon(name)
+    svg ? %(<span class="btn-icon">#{svg}</span>) : ''
+  end
+
+  def widget_dot(color)
+    return '' if color.empty?
+    return '' unless color.match?(/\A(#[0-9a-fA-F]{3,8}|[a-z]{3,20})\z/)
+    %(<span class="tile-dot" style="background: #{color}"></span>)
+  end
+
+  # Clock time of the last state, not "4 minutes ago": for a slow state that is
+  # the normal and correct answer, and an absolute time does not churn the ETag
+  # once a minute.
+  def widget_time(widget)
+    stamp = widget['updated_at'].to_i
+    return '' if stamp.zero?
+    Time.at(stamp).strftime('%H:%M')
+  end
+
+  def widget_bar(progress)
+    return '' if progress.nil?
+    pct = progress.to_i.clamp(0, 100)
+    %(<div class="tile-bar"><div class="tile-bar-fill" style="width: #{pct}%"></div></div>) +
+      %(<div class="tile-pct">#{pct}%</div>)
+  end
+
+  # Board mode for the frontend: poll interval in seconds, 0 when this instance
+  # has no tiles at all (a plain Stage stays a plain Stage).
+  WIDGET_REFRESH_DEFAULT = 3
+
+  def widget_refresh
+    return 0 unless sections.any? { |s| s['discover'] } ||
+                    all_buttons.any? { |b| b['type'] == 'widget' }
+    seconds = config['refresh'].to_i
+    seconds.positive? ? seconds : WIDGET_REFRESH_DEFAULT
+  end
+
   # ── Notifications ──────────────────────────────────────────────────────────
 
   def notify_ntfy(msg)
@@ -332,9 +500,14 @@ class StageBase < Dylan::Plugin
   def render_sidebar
     html = +''
     sections.each do |sec|
+      # Widget tiles are read, not pressed — they live in the board grid, and a
+      # section holding nothing else does not need a sidebar heading.
+      buttons = (sec['buttons'] || []).reject { |b| b['type'] == 'widget' }
+      next if buttons.empty?
+
       html << %(<div class="section">\n)
       html << %(<div class="section-title">#{CGI.escape_html(sec['title'].to_s)}</div>\n)
-      (sec['buttons'] || []).each do |btn|
+      buttons.each do |btn|
         id          = CGI.escape_html(btn['id'].to_s)
         label       = CGI.escape_html(btn['label'].to_s)
         url         = CGI.escape_html(btn['url'].to_s)
@@ -398,6 +571,7 @@ class StageBase < Dylan::Plugin
     @html_template ||= File.read(File.join(ASSETS_DIR, 'index.html'))
                             .gsub('{{PREFIX}}', self.class.url_prefix)
     @html_template.gsub('{{TITLE}}',   CGI.escape_html(stage_title))
+                  .gsub('{{REFRESH}}', widget_refresh.to_s)
                   .gsub('{{SIDEBAR}}', render_sidebar)
   end
 end
