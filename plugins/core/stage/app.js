@@ -147,11 +147,14 @@ window.addEventListener('popstate', () => {
 });
 
 // Klick auf den Stage-Titel oben → zurück zur Home-Ansicht (default-Panel).
-document.querySelector('header h1')?.addEventListener('click', () => {
-  const btn = findPanelButton(ACTIVE_PANEL);
-  if (btn) openPanel(btn, true);
-});
-document.querySelector('header h1')?.style.setProperty('cursor', 'pointer');
+const title = document.querySelector('header h1');
+if (title) {
+  title.addEventListener('click', () => {
+    const btn = findPanelButton(ACTIVE_PANEL);
+    if (btn) openPanel(btn, true);
+  });
+  title.style.setProperty('cursor', 'pointer');
+}
 
 // Ein reines Board hat keine Buttons — dann braucht es auch keine Sidebar.
 if (!aside.querySelector('.btn')) document.body.classList.add('no-sidebar');
@@ -285,7 +288,8 @@ function runStream(id, btn, format) {
     activeStream = null;
     if (appendText) out.textContent += appendText;
     out.classList.add(cssClass);
-    document.getElementById('live-badge')?.remove();
+    const badge = document.getElementById('live-badge');
+    if (badge) badge.remove();
     btn.classList.remove('loading');
   };
 
