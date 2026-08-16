@@ -7,8 +7,6 @@ docker-compose.infrastructure.yml
 
 # Private plugins (contain inline config / secrets)
 plugins/custom/
-scripts/widget-push.sh
-scripts/widget.sh
 
 # Stage-Plattform ist public (StageBase + Assets + ManageStage als
 # Maintenance-Instanz). Die persönliche Stage-Instanz (config/stage.yaml +

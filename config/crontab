@@ -7,8 +7,10 @@
 # Monitor-Plugin (extra/65-monitor.rb): Network-Health alle 5 Minuten generieren
 */5 * * * * /app/scripts/monitor.sh > /proc/1/fd/1 2>&1
 
-# Stage-Plugin: pending Jobs jede Minute abfragen
-* * * * *   curl -sf http://localhost:8080/stage/jobs/check > /proc/1/fd/1 2>&1
+# Stage-Plugin: pending Jobs jede Minute abfragen.
+# Port 80, nicht 8080: server.rb bindet PORT (compose setzt 80), 8080 ist nur
+# der Port, den der Host veröffentlicht.
+* * * * *   curl -sf http://localhost/stage/jobs/check > /proc/1/fd/1 2>&1
 
 # LiveSync-Neustart: KEINE eigene Cron-Zeile mehr. Läuft jetzt bedingt über
 # monitor.sh (alle 5 min: Status beider Macs in monitor.md, Neustart nur bei
