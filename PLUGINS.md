@@ -370,6 +370,39 @@ board:
 - The reply carries an **ETag** over the tile states, so the usual answer to a
   poll is `304` — no render, no transfer. Expiry is part of the digest.
 
+### Frontend rules (`plugins/core/stage/`)
+
+The Stage is meant to open on whatever is lying around, old iPads included.
+That sets a floor of **Safari 10.1 / iOS 10.3**, verified on an iPad mini 2.
+`fetch`, `async`/`await` and CSS Grid are what hold it there; two rules keep
+it from creeping upwards.
+
+**No syntax newer than ES2017 in `app.js`.** Optional chaining and `??` are
+*parse* errors on older engines, so one of them discards the entire file —
+not just its own line. The symptom is not a blank page but a rendered shell
+with empty panels, because Dylan renders the frame server-side and only the
+panel content comes from the script. Check before committing:
+
+```bash
+npx acorn --ecma2017 --silent plugins/core/stage/app.js
+```
+
+**No `gap` in flex containers.** Safari before 14.1 supports it in grid only,
+so flex children sit flush. Grid `gap` is fine and is used in `.link-grid` and
+`.tile-grid`. `@supports (gap: 1px)` does not help — it answers yes for the
+grid support and cannot tell the two apart.
+
+When spacing a flex container, mind who owns the margin:
+
+- `> * + *` carries the specificity of a **single class** and loses against any
+  child that sets the same margin itself. Check the children first.
+- Where a child has its own margin, give it the spacing instead of the
+  container. `.link-grid-title` holds both its distances for that reason.
+- Where the first child can be `display: none` — as `header`'s burger is above
+  700px — a sibling selector invents a margin in front of the second one.
+  `header` keeps `gap` and simply loses its spacing on old Safari.
+- `.output-label` starts with a text node, so it needs `> *`, not `> * + *`.
+
 ---
 
 ## Response Helpers
@@ -744,6 +777,9 @@ http://localhost:8080/dylan
 http://localhost:8080/dylan/routes
 http://localhost:8080/dylan/stats
 ```
+
+Touching `plugins/core/stage/` also means staying inside the browser floor —
+see [Frontend rules](#frontend-rules-pluginscorestage).
 
 ### Performance Testing
 
