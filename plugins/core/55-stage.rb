@@ -144,7 +144,7 @@ class StageBase < Dylan::Plugin
 
     response = case btn['panel']
                when 'links'  then conditional_html(request, links_etag(btn)) { render_link_grid(btn['source'], host) }
-               when 'widget' then handle_widgets(request)
+               when 'widget' then handle_widgets(request, host)
                when 'jobs'   then handle_jobs_view
                when 'notes'  then render_notes_panel(btn['source'] || btn['id'])
                else Dylan::Response.error(404, "Panel '#{CGI.escape_html(id)}' not found")
@@ -389,13 +389,13 @@ class StageBase < Dylan::Plugin
     config['agent'] || notes_agent
   end
 
-  def handle_widgets(request)
+  def handle_widgets(request, host = nil)
     Dylan::Milan.rescued(widget_agent, label: 'Widgets') do
       body    = Dylan::Milan.get(widget_agent, '/widgets').body
       widgets = JSON.parse(body.empty? ? '[]' : body)
       widgets = [] unless widgets.is_a?(Array)
 
-      conditional_html(request, widgets_etag(widgets)) { render_widget_board(widgets) }
+      conditional_html(request, widgets_etag(widgets)) { render_widget_board(widgets, host) }
     end
   end
 
@@ -417,7 +417,7 @@ class StageBase < Dylan::Plugin
   # Sections keep their order from the YAML; `discover: true` appends every
   # target Milan knows that no configured tile claims — that saves maintaining
   # the YAML for throwaway targets.
-  def render_widget_board(widgets)
+  def render_widget_board(widgets, host = nil)
     by_target = widgets.each_with_object({}) { |w, acc| acc[w['target'].to_s] = w }
     claimed   = all_buttons.select { |b| b['type'] == 'widget' }
                            .map    { |b| (b['target'] || b['id']).to_s }
@@ -425,12 +425,12 @@ class StageBase < Dylan::Plugin
     blocks = sections.filter_map do |sec|
       tiles = (sec['buttons'] || []).select { |b| b['type'] == 'widget' }.map do |btn|
         target = (btn['target'] || btn['id']).to_s
-        render_widget_tile(btn, by_target[target], target)
+        render_widget_tile(btn, by_target[target], target, host)
       end
 
       if sec['discover']
         (widgets.map { |w| w['target'].to_s } - claimed).each do |target|
-          tiles << render_widget_tile({}, by_target[target], target)
+          tiles << render_widget_tile({}, by_target[target], target, host)
         end
       end
 
@@ -445,7 +445,7 @@ class StageBase < Dylan::Plugin
 
   # A configured tile without data still gets drawn — an empty slot says
   # "nothing has run yet", a missing slot says nothing at all.
-  def render_widget_tile(btn, widget, target)
+  def render_widget_tile(btn, widget, target, host = nil)
     widget ||= {}
     label = btn['label'] || widget['title'] || target
     icon  = (btn['icon'] || widget['icon']).to_s
@@ -462,7 +462,7 @@ class StageBase < Dylan::Plugin
         <div class="tile-head">
           #{widget_dot(color)}#{widget_icon(icon)}
           <span class="tile-label">#{CGI.escape_html(label.to_s)}</span>
-          <span class="tile-time">#{widget_time(widget)}</span>
+          <span class="tile-time">#{widget_time(widget)}</span>#{widget_doc(btn['doc'], label, host)}
         </div>
         <div class="tile-text">#{empty ? '–' : render_tile_text(text)}</div>
         #{widget_bar(widget['progress'])}
@@ -498,6 +498,23 @@ class StageBase < Dylan::Plugin
     stamp = widget['updated_at'].to_i
     return '' if stamp.zero?
     Time.at(stamp).strftime('%H:%M')
+  end
+
+  # The doc link comes from the YAML and never from the push. A tile shows a
+  # state; where that state is explained is a property of the display. Read it
+  # from the widget instead and any producer could hang links in the interface.
+  #
+  # http(s) and site-relative only — the vocabulary of a documentation link,
+  # and nothing that executes.
+  def widget_doc(url, label, host = nil)
+    url = url.to_s
+    return '' if url.empty?
+    return '' unless url.start_with?('/') || url.match?(%r{\Ahttps?://}i)
+
+    attr  = external_link?(url, host) ? ' target="_blank" rel="noopener"' : ''
+    title = "Doku: #{label}"
+    %(<a class="tile-doc" href="#{CGI.escape_html(url)}"#{attr} ) +
+      %(title="#{CGI.escape_html(title)}" aria-label="#{CGI.escape_html(title)}">&#9432;</a>)
   end
 
   def widget_bar(progress)

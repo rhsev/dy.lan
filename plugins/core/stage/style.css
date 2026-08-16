@@ -254,6 +254,13 @@ body.no-sidebar .menu-toggle { display: none; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tile-time { font-size: 10px; color: var(--n3); flex: 0 0 auto; }
+/* Quiet until looked for: the tile is about its state, not its manual. */
+.tile-doc {
+  font-size: 13px; line-height: 1;
+  color: var(--n3); text-decoration: none;
+  flex: 0 0 auto;
+}
+.tile-doc:hover, .tile-doc:focus { color: var(--n5); }
 .tile-text {
   font-family: var(--mono);
   font-size: 12px; line-height: 1.55;

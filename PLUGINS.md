@@ -357,6 +357,7 @@ board:
           target: copy        # defaults to id
           label: "Backup"     # falls back to the pushed title, then the target
           icon: download
+          doc: "https://…"    # optional ⓘ in the tile head
 
     - title: "Sonstiges"
       discover: true          # every target no configured tile claims
@@ -369,6 +370,12 @@ board:
   is a slow state and just shows the clock time of the last push.
 - The reply carries an **ETag** over the tile states, so the usual answer to a
   poll is `304` — no render, no transfer. Expiry is part of the digest.
+- **`doc`** adds a small ⓘ next to the clock, linking to whatever explains the
+  tile. It is read from the YAML and never from the push: a tile shows a state,
+  and where that state is explained is a property of the display. Taken from
+  the push, any producer could hang links in the interface. Only `http(s)://`
+  and site-relative URLs render; anything else is dropped. External hosts open
+  in a new tab, the same rule the link cards follow.
 
 ### Frontend rules (`plugins/core/stage/`)
 

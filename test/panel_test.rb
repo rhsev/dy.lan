@@ -56,9 +56,9 @@ class PanelTest < Minitest::Test
   end
 
   # Ruft /widgets auf und gibt [status, headers, body] zurück.
-  def get_widgets(stg, widgets, headers = {})
+  def get_widgets(stg, widgets, headers = {}, host = nil)
     Dylan::Milan.stub_body = JSON.generate(widgets)
-    response = stg.send(:handle_widgets, FakeRequest.new(headers))
+    response = stg.send(:handle_widgets, FakeRequest.new(headers), host)
     body = +''
     while (chunk = response.body&.read)
       body << chunk
@@ -127,6 +127,56 @@ class PanelTest < Minitest::Test
 
     assert_includes html, 'data-target="wegwerf"'
     assert_equal 1, html.scan('data-target="copy"').size, 'discover darf keine Kachel doppeln'
+  end
+
+  # ── Info-Knopf ───────────────────────────────────────────────────────────
+
+  def doc_section(doc)
+    [{ 'title' => 'Läuft',
+       'buttons' => [{ 'id' => 'copy', 'type' => 'widget', 'target' => 'copy',
+                       'label' => 'Backup', 'doc' => doc }] }]
+  end
+
+  def test_doc_link_renders_from_yaml
+    _, _, html = get_widgets(stage(doc_section('https://example.org/restic')),
+                             [widget('copy', text: 'ok')], {}, 'dy.lan')
+
+    assert_includes html, 'class="tile-doc"'
+    assert_includes html, 'href="https://example.org/restic"'
+    assert_includes html, 'target="_blank"'
+    assert_includes html, 'Doku: Backup'
+  end
+
+  # Ein Link auf diese Instanz bleibt im selben Tab — sonst verhielten sich
+  # /monitor und http://dy.lan/monitor ohne sichtbaren Grund verschieden.
+  def test_relative_doc_link_stays_in_tab
+    _, _, html = get_widgets(stage(doc_section('/monitor')),
+                             [widget('copy', text: 'ok')], {}, 'dy.lan')
+
+    assert_includes html, 'href="/monitor"'
+    refute_includes html, 'target="_blank"'
+  end
+
+  def test_tile_without_doc_has_no_button
+    _, _, html = get_widgets(stage(tile_section), [widget('copy', text: 'ok')])
+    refute_includes html, 'tile-doc'
+  end
+
+  # Der Doku-Link gehört der Anzeige. Käme er aus dem Push, dürfte jeder
+  # Produzent Links in die Oberfläche hängen.
+  def test_doc_link_is_never_taken_from_the_push
+    _, _, html = get_widgets(stage(tile_section),
+                             [widget('copy', text: 'ok', doc: 'https://evil.example/x')])
+
+    refute_includes html, 'tile-doc'
+    refute_includes html, 'evil.example'
+  end
+
+  def test_doc_link_rejects_non_http_schemes
+    ['javascript:alert(1)', 'data:text/html,x', 'shortcuts://run'].each do |url|
+      _, _, html = get_widgets(stage(doc_section(url)), [widget('copy', text: 'ok')])
+      refute_includes html, 'tile-doc', "#{url} darf keinen Knopf rendern"
+    end
   end
 
   def test_ansi_and_escaping_in_tile_text
