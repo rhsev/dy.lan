@@ -15,7 +15,6 @@
 #   GET /stage/assets/<f>   → CSS/JS-Assets (gecacht, shared zwischen Instanzen)
 #   GET /stage/sheet/<id>   → Cheat sheet fragment (legacy)
 #   GET /stage/run/<id>     → SSE stream proxy
-#   GET /stage/jobs         → Job log fragment (legacy alias, siehe /panel/<id>)
 #   GET /stage/jobs/check   → Cron hook: notify + ack pending jobs
 #   GET /stage/notes/...    → Notes-Source via Milan
 #
@@ -93,16 +92,10 @@ class StageBase < Dylan::Plugin
     when %r{^/panel/([\w-]+)$}
       id = Regexp.last_match(1)
       fetch_request?(request) ? handle_panel(id, request, host) : handle_index(id)
-    when '/widgets'   # legacy alias — see /panel/<id>
-      handle_widgets(request)
     when '/jobs/check'
       handle_jobs_check
-    when '/jobs'      # legacy alias
-      handle_jobs_view
     when '/agents/status'
       Dylan::Response.json(Dylan::Milan.health_check)
-    when '/links'     # legacy alias
-      Dylan::Response.json({ 'sections' => link_sections })
     else
       handle_index
     end
@@ -601,8 +594,7 @@ class StageBase < Dylan::Plugin
   # Link grid (Flame replacement): one list of {label, url, icon} per section.
   # `links:` is a flat array (the default/only source) unless a button names a
   # second one via `source:` — then `links:` becomes a hash keyed by source
-  # name. Returned as JSON at /links (default source only, legacy alias);
-  # HTML for the panel comes from render_link_grid below.
+  # name. HTML for the panel comes from render_link_grid below.
   def link_sections(source = nil)
     raw  = config['links']
     list = raw.is_a?(Hash) ? (raw[source.to_s] || raw['default'] || []) : (raw || [])
