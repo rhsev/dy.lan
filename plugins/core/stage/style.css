@@ -160,8 +160,17 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 .placeholder {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  height: 100%; gap: 10px; color: var(--n3); user-select: none;
+  height: 100%; color: var(--n3); user-select: none;
 }
+/* Abstände als Margin statt `gap`: Safari vor 14.1 (iPad mini 2, iPad Air 1,
+   Macs bis Mojave) kennt `gap` nur im Grid — dort kleben sonst alle Flex-Kinder
+   aneinander. Eine @supports-Abfrage hilft nicht, sie kann Flex und Grid nicht
+   unterscheiden. Auf aktuellen Browsern pixelgleich.
+   ACHTUNG beim Erweitern: `> * + *` hat die Spezifität einer Klasse und
+   verliert gegen jedes Kind, das denselben Rand selbst setzt. Deshalb bleiben
+   `header` (erstes Kind display:none) und `.link-grid-wrap` (.link-grid-title
+   bringt eigene margins mit) bei `gap`. */
+.placeholder > * + * { margin-top: 10px; }
 .placeholder svg { opacity: 0.25; }
 .placeholder p   { font-size: 13px; color: var(--n3); }
 
@@ -178,7 +187,7 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
   gap: 8px;
 }
 .link-card {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center;
   padding: 10px 12px;
   background: var(--n2);
   border: 1px solid var(--n3);
@@ -189,6 +198,7 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
   transition: background 0.15s, border-color 0.15s;
   overflow: hidden;
 }
+.link-card > * + * { margin-left: 8px; }
 .link-card:hover {
   background: var(--n1);
   border-color: var(--blue);
@@ -225,9 +235,10 @@ body.no-sidebar .menu-toggle { display: none; }
   overflow: hidden;
 }
 .tile-head {
-  display: flex; align-items: center; gap: 7px;
+  display: flex; align-items: center;
   margin-bottom: 8px;
 }
+.tile-head > * + * { margin-left: 7px; }
 .tile-dot {
   width: 8px; height: 8px; border-radius: 50%;
   flex: 0 0 auto;
@@ -306,8 +317,11 @@ body.no-sidebar .menu-toggle { display: none; }
   font-size: 10px; font-weight: 700;
   letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--n4); margin-bottom: 10px;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center;
 }
+/* `> *` statt `> * + *`: das erste Kind ist ein Textknoten (»Stream · id«),
+   kein Element — ein Geschwister-Selektor träfe das LIVE-Badge nie. */
+.output-label > * { margin-left: 8px; }
 
 /* Output / stream box */
 .output-box {
@@ -336,8 +350,9 @@ body.no-sidebar .menu-toggle { display: none; }
 
 /* Input row */
 .input-row {
-  display: flex; gap: 8px; margin-bottom: 14px;
+  display: flex; margin-bottom: 14px;
 }
+.input-row > * + * { margin-left: 8px; }
 .pad-input {
   flex: 1; padding: 10px 13px;
   background: var(--n2); border: 1px solid var(--n3);
@@ -478,7 +493,8 @@ body.no-sidebar .menu-toggle { display: none; }
 }
 
 /* Job log */
-.jobs-list { display: flex; flex-direction: column; gap: 10px; }
+.jobs-list { display: flex; flex-direction: column; }
+.jobs-list > * + * { margin-top: 10px; }
 .jobs-empty { color: var(--n4); font-style: italic; padding: 20px 0; }
 
 .job-card {
@@ -491,8 +507,11 @@ body.no-sidebar .menu-toggle { display: none; }
 .job-card.ack   { opacity: 0.55; }
 
 .job-header {
-  display: flex; align-items: center; gap: 9px; margin-bottom: 4px;
+  display: flex; align-items: center; margin-bottom: 4px;
 }
+/* .job-agent setzt weiter unten margin-left:auto und gewinnt damit gegen diese
+   Regel — genau richtig, es soll rechtsbündig bleiben. */
+.job-header > * + * { margin-left: 9px; }
 .job-icon   { font-size: 15px; }
 .job-card.ok    .job-icon { color: var(--grn); }
 .job-card.error .job-icon { color: var(--red); }
