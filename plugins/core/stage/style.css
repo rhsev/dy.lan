@@ -253,7 +253,12 @@ body.no-sidebar .menu-toggle { display: none; }
   flex: 1 1 auto; font-size: 13px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tile-time { font-size: 10px; color: var(--n3); flex: 0 0 auto; }
+/* Wie der Doku-Knopf daneben: --n3 ist die Rahmenfarbe und verschwindet
+   gegen die Kachel — man findet die Zeit nur, wenn man weiß, dass sie da ist. */
+.tile-time {
+  font-size: 10px; flex: 0 0 auto;
+  color: var(--n4); opacity: 0.65;       /* zwischen --n3 und --n4 */
+}
 /* Quieter than the label, but a control has to be findable without hovering —
    --n3 is the border colour and disappears against the tile. */
 .tile-doc {
