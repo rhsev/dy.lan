@@ -262,7 +262,10 @@ body.no-sidebar .menu-toggle { display: none; }
   text-decoration: none;
   flex: 0 0 auto;
 }
-.tile-doc:hover, .tile-doc:focus { color: var(--n5); opacity: 1; }
+/* Nur :hover, nicht :focus — der Fokus bleibt nach dem Klick am Link kleben,
+   und die Kachel sähe nach der Rückkehr dauerhaft angefasst aus. Für die
+   Tastatur genügt der native Fokusring; unterdrückt wird der hier nirgends. */
+.tile-doc:hover { color: var(--n5); opacity: 1; }
 .tile-text {
   font-family: var(--mono);
   font-size: 12px; line-height: 1.55;
