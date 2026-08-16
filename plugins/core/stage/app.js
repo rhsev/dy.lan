@@ -3,9 +3,7 @@ const aside    = document.getElementById('aside');
 const burger   = document.getElementById('menu-toggle');
 const backdrop = document.getElementById('backdrop');
 const PREFIX   = document.body.dataset.prefix || '';
-/* Board mode: > 0 seconds when this instance has widget tiles. The tiles are
-   the home view then, the link grid stays out of the way. */
-const REFRESH  = parseInt(document.body.dataset.refresh || '0', 10) || 0;
+const ACTIVE_PANEL = document.body.dataset.activePanel || '';
 let activeBtn  = null;
 let activeStream = null;
 
@@ -49,116 +47,121 @@ if (document.querySelector('.agent-badge')) {
   if (!IS_IPHONE) setInterval(refreshAgentStatus, 5 * 60 * 1000);
 }
 
-/* ── Link-Grid (Default-View, Flame-Ersatz) ────────────── */
-/* Lädt beim Start /links und zeigt ein Grid aus anklickbaren Links im
-   Panel. Wenn die Stage-Instance keine `links:`-Section in der YAML hat,
-   bleibt der HTML-Placeholder (»Button wählen«) sichtbar. */
-async function loadLinkGrid() {
+/* ── Panels (type: panel) ──────────────────────────────────
+   One fragment endpoint per panel (/panel/<id>), state lives in the URL via
+   pushState/popstate. Panels that carry a live state (the widget board, the
+   job log) keep polling while they're the active panel; loadPanel is a
+   one-shot fetch for everything else. */
+let panelTimer = null;
+let lastPolledHtml = null;
+
+function stopPanelPolling() {
+  if (panelTimer) { clearInterval(panelTimer); panelTimer = null; }
+  lastPolledHtml = null;
+}
+
+async function fetchPanelFragment(id, cache) {
+  const res  = await fetch(PREFIX + '/panel/' + encodeURIComponent(id), {
+    headers: { 'X-Requested-With': 'fetch' },
+    cache
+  });
+  const html = await res.text();
+  return { ok: res.ok, html };
+}
+
+async function loadPanel(btn) {
+  const { id, panel: kind, refresh } = btn.dataset;
+  let loaded = null;
   try {
-    const res = await fetch(PREFIX + '/links', { cache: 'no-store' });
-    if (!res.ok) return;
-    const { sections } = await res.json();
-    if (!sections || !sections.length) return;
-    setPanel(renderLinkGrid(sections));
-    loadMdiIcons(panel);
-  } catch (e) { /* Netzwerk-Fehler: Placeholder bleibt */ }
-}
-
-function renderLinkGrid(sections) {
-  return '<div class="link-grid-wrap">' + sections.map(sec => `
-    <h3 class="link-grid-title">${esc(sec.title)}</h3>
-    <div class="link-grid">
-      ${(sec.items || []).map(it => `
-        <a class="link-card" href="${esc(it.url)}"${external(it.url) ? ' target="_blank" rel="noopener"' : ''}>
-          ${it.icon ? (it.icon.startsWith('mdi:') ? mdiIcon(it.icon.slice(4), it.icon_color) : `<span class="link-icon">${esc(it.icon)}</span>`) : ''}
-          <span class="link-label">${esc(it.label)}</span>
-        </a>`).join('')}
-    </div>`).join('') + '</div>';
-}
-
-const iconCache = {};
-function mdiIcon(name, color) {
-  const style = color ? ` style="color: ${nordColor(color)}"` : '';
-  return iconCache[name] !== undefined
-    ? iconCache[name].replace('class="link-icon-mdi"', `class="link-icon-mdi"${style}`)
-    : `<span class="link-icon-mdi-placeholder" data-mdi="${esc(name)}" data-color="${esc(color || '')}"></span>`;
-}
-
-const NORD_VARS = ['teal','blue','red','grn','yel','pur','n9','n10'];
-function nordColor(c) { return NORD_VARS.includes(c) ? `var(--${c})` : c; }
-
-// Loads MDI icons asynchronously for the link grid (after renderLinkGrid)
-async function loadMdiIcons(container) {
-  const placeholders = container.querySelectorAll('[data-mdi]');
-  for (const el of placeholders) {
-    const name = el.dataset.mdi;
-    if (iconCache[name] === undefined) {
-      try {
-        const res = await fetch(`${PREFIX}/assets/icons/${encodeURIComponent(name)}.svg`);
-        if (res.ok) {
-          const svg = await res.text();
-          iconCache[name] = `<span class="link-icon-mdi">${svg}</span>`;
-        } else { iconCache[name] = ''; }
-      } catch { iconCache[name] = ''; }
-    }
-    if (iconCache[name]) {
-      const color = el.dataset.color;
-      const style = color ? ` style="color: ${nordColor(color)}"` : '';
-      el.outerHTML = iconCache[name].replace('class="link-icon-mdi"', `class="link-icon-mdi"${style}`);
-    }
-  }
-}
-
-function external(url) {
-  return /^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith(location.origin);
-}
-
-/* ── Widget-Board ──────────────────────────────────────── */
-/* Ein Refresh = ein Request an Dylan, der daraus einen Request an Milan
-   macht. Dylan antwortet mit ETag; im Normalfall ist das ein 304, den der
-   Browser aus dem Cache bedient — kein Rendern, kein Transfer. Deshalb
-   `cache: 'no-cache'` (revalidieren) statt 'no-store' (immer neu holen). */
-let widgetTimer = null;
-let widgetHtml  = null;
-
-function stopWidgetBoard() {
-  if (widgetTimer) { clearInterval(widgetTimer); widgetTimer = null; }
-}
-
-async function loadWidgets() {
-  try {
-    const res  = await fetch(PREFIX + '/widgets', { cache: 'no-cache' });
-    const html = await res.text();
-    if (!res.ok) { setPanel(`<div class="output-box error">${esc(html.trim())}</div>`); return; }
-    // Unveränderte Antwort: DOM nicht anfassen, sonst flackert die Auswahl weg.
-    if (html === widgetHtml) return;
-    widgetHtml = html;
+    const { ok, html } = await fetchPanelFragment(id, 'no-store');
+    if (!ok) { setPanel(`<div class="output-box error">${esc(html.trim())}</div>`); return; }
     setPanel(html);
+    loaded = html;
+    if (kind === 'notes') { panel.classList.add('notes-active'); wireNotes(); }
   } catch (e) {
-    /* Netzwerk-Fehler: letzte Kacheln stehen lassen, nächster Tick versucht es neu */
+    setPanel(`<div class="output-box error">${esc(e.message)}</div>`);
+  } finally {
+    btn.classList.remove('loading');
   }
+
+  // Der gerade geladene Stand wird als Saat übergeben: sonst holt der erste
+  // Tick dasselbe Fragment sofort noch einmal und zeichnet es neu.
+  if (kind === 'widget') startPanelPolling(id, parseInt(refresh || '0', 10) || 3, false, loaded);
+  else if (kind === 'jobs') startPanelPolling(id, 30, true);
 }
 
-function startWidgetBoard() {
-  stopWidgetBoard();
-  if (activeBtn) { activeBtn.classList.remove('active'); activeBtn = null; }
-  widgetHtml = null;
-  loadWidgets();
-  widgetTimer = setInterval(loadWidgets, REFRESH * 1000);
+// widget: compare fragments (server answers 304 → unchanged text) so a
+// no-op poll doesn't reset scroll/selection. jobs: the label always carries
+// the current time, so every poll redraws — the timestamp is the point.
+function startPanelPolling(id, seconds, alwaysRedraw, seedHtml = null) {
+  stopPanelPolling();
+  lastPolledHtml = seedHtml;
+  const tick = async () => {
+    try {
+      const { ok, html } = await fetchPanelFragment(id, 'no-cache');
+      if (!ok) { setPanel(`<div class="output-box error">${esc(html.trim())}</div>`); return; }
+      if (!alwaysRedraw) {
+        if (html === lastPolledHtml) return;
+        lastPolledHtml = html;
+        setPanel(html);
+        return;
+      }
+      setPanel(`
+        <div class="output-label">Job Log
+          <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--n3);font-size:10px">
+            · aktualisiert ${new Date().toLocaleTimeString('de')}
+          </span>
+        </div>
+        ${html}
+      `);
+    } catch (e) {
+      /* Netzwerk-Fehler: letzten Stand stehen lassen, nächster Tick versucht es neu */
+    }
+  };
+  // Ohne Saat (jobs) sofort einmal ziehen — dort trägt erst der Tick den
+  // Zeitstempel bei, auf den es bei einem Job-Log ankommt.
+  if (!seedHtml) tick();
+  panelTimer = setInterval(tick, seconds * 1000);
 }
 
-// Klick auf den Stage-Titel oben → zurück zur Home-Ansicht.
-document.querySelector('header h1')?.addEventListener('click', () => {
+function openPanel(btn, push) {
+  stopPanelPolling();
   if (activeStream) { activeStream.close(); activeStream = null; }
-  if (activeBtn)    { activeBtn.classList.remove('active'); activeBtn = null; }
-  if (REFRESH > 0) startWidgetBoard(); else loadLinkGrid();
+  if (activeBtn) activeBtn.classList.remove('active');
+  btn.classList.add('active');
+  activeBtn = btn;
+
+  if (push) history.pushState({ panel: btn.dataset.id }, '', PREFIX + '/panel/' + encodeURIComponent(btn.dataset.id));
+  loadPanel(btn);
+}
+
+function findPanelButton(id) {
+  return id ? document.querySelector(`.btn[data-panel][data-id="${CSS.escape(id)}"]`) : null;
+}
+
+window.addEventListener('popstate', () => {
+  const match = location.pathname.match(/\/panel\/([\w-]+)$/);
+  const id  = match ? match[1] : ACTIVE_PANEL;
+  const btn = findPanelButton(id);
+  if (btn) openPanel(btn, false);
+});
+
+// Klick auf den Stage-Titel oben → zurück zur Home-Ansicht (default-Panel).
+document.querySelector('header h1')?.addEventListener('click', () => {
+  const btn = findPanelButton(ACTIVE_PANEL);
+  if (btn) openPanel(btn, true);
 });
 document.querySelector('header h1')?.style.setProperty('cursor', 'pointer');
 
 // Ein reines Board hat keine Buttons — dann braucht es auch keine Sidebar.
 if (!aside.querySelector('.btn')) document.body.classList.add('no-sidebar');
 
-if (REFRESH > 0) startWidgetBoard(); else loadLinkGrid();
+// Initial: das Default-Panel ist bereits serverseitig als aktiver Button
+// markiert — lädt hier nur dessen Inhalt nach.
+(() => {
+  const btn = findPanelButton(ACTIVE_PANEL);
+  if (btn) { activeBtn = btn; loadPanel(btn); }
+})();
 
 /* ── Mobile-Drawer ─────────────────────────────────────── */
 const MOBILE_BREAKPOINT = 700;
@@ -174,7 +177,14 @@ backdrop.addEventListener('click', () => setDrawer(false));
 
 document.querySelectorAll('.btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    stopWidgetBoard();   // sonst überschreibt der nächste Tick das Panel
+    if (btn.dataset.type === 'panel') {
+      btn.classList.add('loading');
+      openPanel(btn, true);
+      if (isMobile()) setDrawer(false);
+      return;
+    }
+
+    stopPanelPolling();
     if (activeStream) { activeStream.close(); activeStream = null; }
     if (activeBtn)    activeBtn.classList.remove('active');
     btn.classList.add('active', 'loading');
@@ -183,14 +193,12 @@ document.querySelectorAll('.btn').forEach(btn => {
     // Drawer schliessen auf Mobile, damit der Panel-Inhalt sichtbar wird
     if (isMobile()) setDrawer(false);
 
-    const { type, id, url, placeholder, source, format } = btn.dataset;
+    const { type, id, url, placeholder, format } = btn.dataset;
 
-    if      (type === 'action')   runAction(id, url, btn, format);
-    else if (type === 'stream')   runStream(id, btn, format);
-    else if (type === 'input')    renderInput(id, url, placeholder, btn);
-    else if (type === 'jobs')     loadJobs(btn);
-    else if (type === 'notes')    loadNotes(source || id || 'cheaters', btn);
-    else                          runAction(id, url, btn);
+    if      (type === 'action') runAction(id, url, btn, format);
+    else if (type === 'stream') runStream(id, btn, format);
+    else if (type === 'input')  renderInput(id, url, placeholder, btn);
+    else                        runAction(id, url, btn);
   });
 });
 
@@ -398,96 +406,33 @@ function renderStreamPrompt(label, action, btn) {
 }
 
 /* ── Notes split panel ──────────────────────────────────── */
-let notesTimer = null;
-
-function loadNotes(source, btn) {
-  setPanel(`
-    <div class="notes-layout">
-      <div class="notes-nav" id="notes-nav">
-        <div class="notes-loading">Lade\u2026</div>
-      </div>
-      <div class="notes-content" id="notes-content">
-        <div class="notes-placeholder">Datei w\u00e4hlen</div>
-      </div>
-    </div>
-  `);
-  // CSS-Hook: .panel.notes-active entfernt das Panel-Padding und stellt
-  // overflow:hidden, damit das Split-View bis zum Browser-Rand reicht.
-  panel.classList.add('notes-active');
-  btn.classList.remove('loading');
-
-  fetch(PREFIX + '/notes/' + encodeURIComponent(source))
-    .then(r => r.json())
-    .then(files => {
-      const nav = document.getElementById('notes-nav');
-      if (!files.length) {
-        nav.innerHTML = '<div class="notes-empty">Keine Dateien</div>';
-        return;
-      }
-      nav.innerHTML = files.map(f =>
-        `<div class="note-item" data-source="${esc(source)}" data-file="${esc(f)}">${esc(f)}</div>`
-      ).join('');
-
-      nav.querySelectorAll('.note-item').forEach(item => {
-        item.addEventListener('click', () => {
-          nav.querySelectorAll('.note-item').forEach(i => i.classList.remove('active'));
-          item.classList.add('active');
-          const content = document.getElementById('notes-content');
-          content.innerHTML = '<div class="notes-loading">Lade\u2026</div>';
-          fetch(PREFIX + '/notes/' + encodeURIComponent(item.dataset.source) +
-                '/' + encodeURIComponent(item.dataset.file))
-            .then(r => r.text())
-            .then(html => {
-              content.innerHTML = '<div class="sheet-frame">' + html + '</div>';
-            })
-            .catch(e => {
-              content.innerHTML = '<div class="output-box error">' + esc(e.message) + '</div>';
-            });
+/* Die Datei-Liste kommt bereits gerendert im Panel-Fragment (render_notes_panel
+   in 55-stage.rb) — hier werden nur noch die Klicks auf die Liste verdrahtet. */
+function wireNotes() {
+  const nav = document.getElementById('notes-nav');
+  if (!nav) return;
+  nav.querySelectorAll('.note-item').forEach(item => {
+    item.addEventListener('click', () => {
+      nav.querySelectorAll('.note-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      const content = document.getElementById('notes-content');
+      content.innerHTML = '<div class="notes-loading">Lade…</div>';
+      fetch(PREFIX + '/notes/' + encodeURIComponent(item.dataset.source) +
+            '/' + encodeURIComponent(item.dataset.file))
+        .then(r => r.text())
+        .then(html => {
+          content.innerHTML = '<div class="sheet-frame">' + html + '</div>';
+        })
+        .catch(e => {
+          content.innerHTML = '<div class="output-box error">' + esc(e.message) + '</div>';
         });
-      });
-    })
-    .catch(e => {
-      document.getElementById('notes-nav').innerHTML =
-        '<div class="output-box error">' + esc(e.message) + '</div>';
     });
-}
-
-/* ── Jobs ───────────────────────────────────────────────── */
-let jobsTimer = null;
-
-function loadJobs(btn) {
-  if (jobsTimer) { clearInterval(jobsTimer); jobsTimer = null; }
-
-  const load = async () => {
-    try {
-      const res  = await fetch(PREFIX + '/jobs');
-      const html = await res.text();
-      if (activeBtn === btn) {
-        setPanel(`
-          <div class="output-label">Job Log
-            <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--n3);font-size:10px">
-              · aktualisiert ${new Date().toLocaleTimeString('de')}
-            </span>
-          </div>
-          ${html}
-        `);
-      }
-    } catch (e) {
-      if (activeBtn === btn)
-        setPanel(`<div class="output-box error">${esc(e.message)}</div>`);
-    }
-  };
-
-  load().finally(() => btn.classList.remove('loading'));
-  jobsTimer = setInterval(() => {
-    if (activeBtn !== btn) { clearInterval(jobsTimer); jobsTimer = null; return; }
-    load();
-  }, 30000);
+  });
 }
 
 /* ── Util ───────────────────────────────────────────────── */
 function setPanel(html) {
-  panel.classList.remove('cheaters-active', 'notes-active');
+  panel.classList.remove('notes-active');
   panel.innerHTML = html;
   panel.scrollTop = 0;
 }

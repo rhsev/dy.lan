@@ -9,13 +9,19 @@
 # URL prefix and config file. A fix in the base propagates to all instances.
 #
 # Routes pro Instance (z.B. mit Prefix /stage):
-#   GET /stage              → Dashboard
+#   GET /stage              → Dashboard (default-Panel serverseitig aktiv)
+#   GET /stage/panel/<id>   → Panel-Fragment (mit X-Requested-With: fetch) oder
+#                              volle Seite mit diesem Panel aktiv (Direktaufruf)
 #   GET /stage/assets/<f>   → CSS/JS-Assets (gecacht, shared zwischen Instanzen)
 #   GET /stage/sheet/<id>   → Cheat sheet fragment (legacy)
 #   GET /stage/run/<id>     → SSE stream proxy
-#   GET /stage/jobs         → Job log fragment
+#   GET /stage/jobs         → Job log fragment (legacy alias, siehe /panel/<id>)
 #   GET /stage/jobs/check   → Cron hook: notify + ack pending jobs
 #   GET /stage/notes/...    → Notes-Source via Milan
+#
+# Panel-Renderer (type: panel, panel: links|widget|jobs|notes) rendern
+# serverseitig. action/stream/input bleiben JS-getrieben — sie sind keine
+# Panels, sondern Aktionen mit Ausgabe.
 
 require 'yaml'
 require 'cgi'
@@ -84,15 +90,18 @@ class StageBase < Dylan::Plugin
       handle_note_render(default_notes_source, CGI.unescape(Regexp.last_match(1)))
     when %r{^/run/(.+)$}
       handle_stream_run(Regexp.last_match(1))
-    when '/widgets'
+    when %r{^/panel/([\w-]+)$}
+      id = Regexp.last_match(1)
+      fetch_request?(request) ? handle_panel(id, request, host) : handle_index(id)
+    when '/widgets'   # legacy alias — see /panel/<id>
       handle_widgets(request)
     when '/jobs/check'
       handle_jobs_check
-    when '/jobs'
+    when '/jobs'      # legacy alias
       handle_jobs_view
     when '/agents/status'
       Dylan::Response.json(Dylan::Milan.health_check)
-    when '/links'
+    when '/links'     # legacy alias
       Dylan::Response.json({ 'sections' => link_sections })
     else
       handle_index
@@ -103,8 +112,76 @@ class StageBase < Dylan::Plugin
 
   # ── Handlers ───────────────────────────────────────────────────────────────
 
-  def handle_index
-    Dylan::Response.html(render_html)
+  def handle_index(active_panel_id = nil)
+    html = render_html(active_panel_id)
+    return Dylan::Response.html(html) unless active_panel_id
+
+    # Same URL, two answers: /panel/<id> is a fragment for a fetch and the
+    # whole page for a plain navigation. A cache that is not told about the
+    # header would eventually hand one out in place of the other.
+    Async::HTTP::Protocol::Response[200,
+      { 'content-type' => 'text/html; charset=UTF-8',
+        'vary'         => VARY_FETCH },
+      Protocol::HTTP::Body::Buffered.wrap(html)]
+  end
+
+  VARY_FETCH = 'x-requested-with'
+
+  def fetch_request?(request)
+    Array(request.headers['x-requested-with']).flatten.join(',').include?('fetch')
+  end
+
+  # ── Panels (type: panel) ─────────────────────────────────────────────────
+  #
+  # One fragment endpoint for every panel button. The button's `panel` field
+  # picks the renderer — a new panel kind is a case branch here, not a second
+  # route. `/panel/<id>` always answers with the fragment; a plain browser
+  # navigation (no X-Requested-With) gets the full page instead, with the
+  # panel wired up as the active button — see handle_index/render_html.
+  def handle_panel(id, request, host = nil)
+    btn = all_buttons.find { |b| b['id'] == id && b['type'] == 'panel' }
+    return Dylan::Response.error(404, "Panel '#{CGI.escape_html(id)}' not found") unless btn
+
+    response = case btn['panel']
+               when 'links'  then conditional_html(request, links_etag(btn)) { render_link_grid(btn['source'], host) }
+               when 'widget' then handle_widgets(request)
+               when 'jobs'   then handle_jobs_view
+               when 'notes'  then render_notes_panel(btn['source'] || btn['id'])
+               else Dylan::Response.error(404, "Panel '#{CGI.escape_html(id)}' not found")
+               end
+
+    response.headers['vary'] = VARY_FETCH unless response.headers['vary']
+    response
+  end
+
+  # Links change only with the YAML — config_mtime is the whole input, unlike
+  # the widget board's ETag which has to reflect live pushed state.
+  def links_etag(btn)
+    %("#{Digest::SHA256.hexdigest("links:#{btn['source']}:#{config_mtime.to_i}")[0, 16]}")
+  end
+
+  # Shared 304-or-render flow for ETag'd HTML fragments. The 304 repeats the
+  # Vary header — a validated cache entry has to keep the same key it was
+  # stored under.
+  def conditional_html(request, etag)
+    inm = Array(request.headers['if-none-match']).flatten.join(',')
+    if !inm.empty? && (inm == '*' || inm.include?(etag))
+      return Async::HTTP::Protocol::Response[304, { 'etag' => etag, 'vary' => VARY_FETCH }, []]
+    end
+
+    html = Protocol::HTTP::Body::Buffered.wrap(yield)
+    Async::HTTP::Protocol::Response[200,
+      { 'content-type'  => 'text/html; charset=UTF-8',
+        'etag'          => etag,
+        'vary'          => VARY_FETCH,
+        'cache-control' => 'no-cache' },
+      html]
+  end
+
+  # The stage's home view: the `default: true` panel button, if any. A stage
+  # without one (e.g. /manage) keeps the plain "Button wählen" placeholder.
+  def default_panel
+    all_buttons.find { |b| b['type'] == 'panel' && b['default'] }
   end
 
   # URL-encoding note: source_id and filename arrive already URL-encoded from
@@ -142,22 +219,62 @@ class StageBase < Dylan::Plugin
     end
   end
 
+  # Notes panel: file list + empty content pane in one fragment. The list
+  # click still fetches /notes/<source>/<file> as before — only the initial
+  # scaffold moved server-side, so a fresh panel load is one request instead
+  # of "list, then render" over two.
+  def render_notes_panel(source_id)
+    Dylan::Milan.rescued(notes_agent, label: 'Notes') do
+      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}")
+      files    = JSON.parse(response.body.empty? ? '[]' : response.body)
+      Dylan::Response.html(notes_panel_html(files, source_id))
+    end
+  end
+
+  def notes_panel_html(files, source_id)
+    nav = if files.empty?
+            '<div class="notes-empty">Keine Dateien</div>'
+          else
+            files.map do |f|
+              escaped = CGI.escape_html(f)
+              %(<div class="note-item" data-source="#{CGI.escape_html(source_id)}" data-file="#{escaped}">#{escaped}</div>)
+            end.join
+          end
+
+    <<~HTML
+      <div class="notes-layout">
+        <div class="notes-nav" id="notes-nav">#{nav}</div>
+        <div class="notes-content" id="notes-content">
+          <div class="notes-placeholder">Datei wählen</div>
+        </div>
+      </div>
+    HTML
+  end
+
   ICONS_DIR = File.join(ASSETS_DIR, 'icons')
 
-  # Renders a button icon: emoji directly, mdi:<name> as inline SVG.
-  # Inline SVG allows CSS color control via currentColor — no filter trick needed.
-  # SVG content is cached (one file read per icon).
+  # Renders an icon: emoji directly, mdi:<name> as inline SVG. Inline SVG
+  # allows CSS color control via currentColor — no filter trick needed. SVG
+  # content is cached (one file read per icon).
   # icon_color: named Nord variable (teal, blue, red, grn, yel, pur) or any hex value.
-  def render_btn_icon(icon, _prefix, icon_color = nil)
-    return '' if icon.empty?
+  def render_icon(icon, icon_color, svg_class:, emoji_class:)
+    return '' if icon.to_s.empty?
     style = icon_color_style(icon_color)
     if icon.start_with?('mdi:')
       name = icon.sub('mdi:', '').gsub(/[^\w-]/, '')
       svg  = inline_icon(name)
-      svg ? %(<span class="btn-icon"#{style}>#{svg}</span>) : ''
+      svg ? %(<span class="#{svg_class}"#{style}>#{svg}</span>) : ''
     else
-      %(<span class="btn-emoji">#{CGI.escape_html(icon)}</span>)
+      %(<span class="#{emoji_class}">#{CGI.escape_html(icon)}</span>)
     end
+  end
+
+  def render_btn_icon(icon, _prefix, icon_color = nil)
+    render_icon(icon, icon_color, svg_class: 'btn-icon', emoji_class: 'btn-emoji')
+  end
+
+  def render_link_icon(icon, icon_color)
+    render_icon(icon, icon_color, svg_class: 'link-icon-mdi', emoji_class: 'link-icon')
   end
 
   ICON_COLOR_VARS = %w[teal blue red grn yel pur n9 n10].freeze
@@ -193,8 +310,7 @@ class StageBase < Dylan::Plugin
   end
 
   def default_notes_source
-    button = (config['sections'] || []).flat_map { |s| s['buttons'] || [] }
-                                       .find    { |b| b['type'] == 'notes' }
+    button = all_buttons.find { |b| b['type'] == 'panel' && b['panel'] == 'notes' }
     button&.dig('source') || 'cheaters'
   end
 
@@ -279,18 +395,7 @@ class StageBase < Dylan::Plugin
       widgets = JSON.parse(body.empty? ? '[]' : body)
       widgets = [] unless widgets.is_a?(Array)
 
-      etag = widgets_etag(widgets)
-      inm  = Array(request.headers['if-none-match']).flatten.join(',')
-      if !inm.empty? && (inm == '*' || inm.include?(etag))
-        return Async::HTTP::Protocol::Response[304, { 'etag' => etag }, []]
-      end
-
-      html = Protocol::HTTP::Body::Buffered.wrap(render_widget_board(widgets))
-      Async::HTTP::Protocol::Response[200,
-        { 'content-type'  => 'text/html; charset=UTF-8',
-          'etag'          => etag,
-          'cache-control' => 'no-cache' },
-        html]
+      conditional_html(request, widgets_etag(widgets)) { render_widget_board(widgets) }
     end
   end
 
@@ -402,14 +507,12 @@ class StageBase < Dylan::Plugin
       %(<div class="tile-pct">#{pct}%</div>)
   end
 
-  # Board mode for the frontend: poll interval in seconds, 0 when this instance
-  # has no tiles at all (a plain Stage stays a plain Stage).
+  # Poll interval for a `panel: widget` button — configured per button via
+  # `refresh:`, not per stage: the interval is a property of that panel now.
   WIDGET_REFRESH_DEFAULT = 3
 
-  def widget_refresh
-    return 0 unless sections.any? { |s| s['discover'] } ||
-                    all_buttons.any? { |b| b['type'] == 'widget' }
-    seconds = config['refresh'].to_i
+  def panel_refresh(btn)
+    seconds = btn['refresh'].to_i
     seconds.positive? ? seconds : WIDGET_REFRESH_DEFAULT
   end
 
@@ -479,9 +582,14 @@ class StageBase < Dylan::Plugin
   end
 
   # Link grid (Flame replacement): one list of {label, url, icon} per section.
-  # Returned as JSON at /links only; empty array when not configured.
-  def link_sections
-    (config['links'] || []).map do |sec|
+  # `links:` is a flat array (the default/only source) unless a button names a
+  # second one via `source:` — then `links:` becomes a hash keyed by source
+  # name. Returned as JSON at /links (default source only, legacy alias);
+  # HTML for the panel comes from render_link_grid below.
+  def link_sections(source = nil)
+    raw  = config['links']
+    list = raw.is_a?(Hash) ? (raw[source.to_s] || raw['default'] || []) : (raw || [])
+    list.map do |sec|
       items = (sec['items'] || []).map do |it|
         item = {
           'label' => it['label'].to_s,
@@ -495,13 +603,49 @@ class StageBase < Dylan::Plugin
     end
   end
 
+  def render_link_grid(source = nil, host = nil)
+    blocks = link_sections(source).filter_map do |sec|
+      next if sec['items'].empty?
+      items = sec['items'].map { |it| render_link_card(it, host) }.join
+      %(<h3 class="link-grid-title">#{CGI.escape_html(sec['title'])}</h3>) +
+        %(<div class="link-grid">#{items}</div>)
+    end
+    return '<div class="link-grid-empty">Keine Links konfiguriert.</div>' if blocks.empty?
+    %(<div class="link-grid-wrap">#{blocks.join}</div>)
+  end
+
+  def render_link_card(item, host = nil)
+    url  = item['url']
+    attr = external_link?(url, host) ? ' target="_blank" rel="noopener"' : ''
+    icon = render_link_icon(item['icon'], item['icon_color'])
+    %(<a class="link-card" href="#{CGI.escape_html(url)}"#{attr}>#{icon}<span class="link-label">#{CGI.escape_html(item['label'])}</span></a>)
+  end
+
+  # A new tab is for links that leave this instance. Relative URLs never do;
+  # an absolute one only when its host differs from the one the page was
+  # requested under — otherwise /monitor and http://dy.lan/monitor would
+  # behave differently for no visible reason.
+  def external_link?(url, host = nil)
+    return false unless url.match?(%r{\A[a-z][a-z0-9+.\-]*:}i)
+    return true if host.to_s.empty?
+
+    target = begin
+      URI.parse(url).host
+    rescue URI::InvalidURIError
+      nil
+    end
+    return true if target.nil?  # shortcuts://, mailto: — not this instance either
+
+    !target.casecmp?(host.to_s.split(':').first.to_s)
+  end
+
   # ── Sidebar ────────────────────────────────────────────────────────────────
 
-  def render_sidebar
+  def render_sidebar(active: nil)
     html = +''
     sections.each do |sec|
-      # Widget tiles are read, not pressed — they live in the board grid, and a
-      # section holding nothing else does not need a sidebar heading.
+      # Widget tiles are read, not pressed — they live in the board panel, and
+      # a section holding nothing else does not need a sidebar heading.
       buttons = (sec['buttons'] || []).reject { |b| b['type'] == 'widget' }
       next if buttons.empty?
 
@@ -513,23 +657,25 @@ class StageBase < Dylan::Plugin
         url         = CGI.escape_html(btn['url'].to_s)
         placeholder = CGI.escape_html(btn['placeholder'].to_s)
         type = case btn['type']
-               when 'cheatsheet', 'notes' then 'notes'
-               when 'stream'              then 'stream'
-               when 'input'               then 'input'
-               when 'jobs'                then 'jobs'
-               else                            'action'
+               when 'stream' then 'stream'
+               when 'input'  then 'input'
+               when 'panel'  then 'panel'
+               else               'action'
                end
-        source    = CGI.escape_html(btn['source'].to_s)
-        format    = CGI.escape_html(btn['format'].to_s)
-        icon_html = render_btn_icon(btn['icon'].to_s, self.class.url_prefix, btn['icon_color'])
-        agent = badge_agent_for(btn)
-        agent_attr  = agent ? %( data-agent="#{CGI.escape_html(agent)}") : ''
-        badge_html  = agent ? %(<span class="agent-badge" data-agent="#{CGI.escape_html(agent)}">#{CGI.escape_html(agent)}</span>) : ''
+        source       = CGI.escape_html(btn['source'].to_s)
+        format       = CGI.escape_html(btn['format'].to_s)
+        icon_html    = render_btn_icon(btn['icon'].to_s, self.class.url_prefix, btn['icon_color'])
+        agent        = badge_agent_for(btn)
+        agent_attr   = agent ? %( data-agent="#{CGI.escape_html(agent)}") : ''
+        badge_html   = agent ? %(<span class="agent-badge" data-agent="#{CGI.escape_html(agent)}">#{CGI.escape_html(agent)}</span>) : ''
+        panel_attr   = type == 'panel' ? %( data-panel="#{CGI.escape_html(btn['panel'].to_s)}") : ''
+        refresh_attr = (type == 'panel' && btn['panel'] == 'widget') ? %( data-refresh="#{panel_refresh(btn)}") : ''
+        active_class = (active && btn['id'].to_s == active.to_s) ? ' active' : ''
         html << <<~BTN
-          <button class="btn btn-#{type}"
+          <button class="btn btn-#{type}#{active_class}"
                   data-id="#{id}" data-type="#{type}"
                   data-url="#{url}" data-placeholder="#{placeholder}"
-                  data-source="#{source}" data-format="#{format}"#{agent_attr}>#{badge_html}#{icon_html}#{label}</button>
+                  data-source="#{source}" data-format="#{format}"#{panel_attr}#{refresh_attr}#{agent_attr}>#{badge_html}#{icon_html}#{label}</button>
         BTN
       end
       html << %(</div>\n)
@@ -538,13 +684,14 @@ class StageBase < Dylan::Plugin
   end
 
   # Which agent gets the badge for this button?
-  # - action/stream/input: derived from the first URL segment
-  # - notes/cheatsheet:    uses the configured sheets_agent (default: mini)
-  # - jobs:                aggregates all agents → no single badge
+  # - action/stream/input:    derived from the first URL segment
+  # - panel:notes:            uses the configured sheets_agent (default: mini)
+  # - panel:jobs:             aggregates all agents → no single badge
   # Returns nil if no Milan agent can be associated.
   def badge_agent_for(btn)
-    case btn['type']
-    when 'notes', 'cheatsheet'
+    kind = btn['type'] == 'panel' ? btn['panel'] : btn['type']
+    case kind
+    when 'notes'
       candidate = notes_agent
       Dylan::Milan.agents.key?(candidate) ? candidate : nil
     when 'jobs'
@@ -564,15 +711,16 @@ class StageBase < Dylan::Plugin
 
   # ── HTML ───────────────────────────────────────────────────────────────────
 
-  def render_html
+  def render_html(active_panel_id = nil)
     # Template is loaded once and the instance-specific {{PREFIX}} placeholder
     # is substituted on first render — subsequent renders only replace the
-    # dynamic fields (title and sidebar).
+    # dynamic fields (title, sidebar, active panel).
     @html_template ||= File.read(File.join(ASSETS_DIR, 'index.html'))
                             .gsub('{{PREFIX}}', self.class.url_prefix)
-    @html_template.gsub('{{TITLE}}',   CGI.escape_html(stage_title))
-                  .gsub('{{REFRESH}}', widget_refresh.to_s)
-                  .gsub('{{SIDEBAR}}', render_sidebar)
+    panel_id = active_panel_id || default_panel&.dig('id')
+    @html_template.gsub('{{TITLE}}',        CGI.escape_html(stage_title))
+                  .gsub('{{ACTIVE_PANEL}}', CGI.escape_html(panel_id.to_s))
+                  .gsub('{{SIDEBAR}}',      render_sidebar(active: panel_id))
   end
 end
 

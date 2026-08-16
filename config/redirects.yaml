@@ -31,3 +31,7 @@ redirects:
   - pattern: '^/s/(.+)$'
     target: 'shortcuts://run-shortcut?name=${1}'
     description: 'shortcut'
+
+  - pattern: '^/board/?$'
+    target: '/stage/panel/board'
+    description: 'Board-Instanz (57-board.rb) abgelöst durch Stage-Panel'

@@ -132,10 +132,8 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 
 .btn-action { background: var(--n10); color: var(--n6); }
 .btn-stream { background: var(--teal); color: var(--n6); }
-.btn-sheet  { background: var(--pur);  color: var(--n6); }
-.btn-notes  { background: var(--pur);  color: var(--n6); }
+.btn-panel  { background: var(--pur);  color: var(--n6); }
 .btn-input  { background: var(--n9);   color: var(--n6); }
-.btn-jobs   { background: var(--yel);  color: var(--n0); }
 
 .btn.loading { opacity: 0.5; pointer-events: none; }
 .btn-emoji { margin-right: 5px; }
