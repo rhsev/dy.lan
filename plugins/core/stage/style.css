@@ -167,20 +167,26 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
    aneinander. Eine @supports-Abfrage hilft nicht, sie kann Flex und Grid nicht
    unterscheiden. Auf aktuellen Browsern pixelgleich.
    ACHTUNG beim Erweitern: `> * + *` hat die Spezifität einer Klasse und
-   verliert gegen jedes Kind, das denselben Rand selbst setzt. Deshalb bleiben
-   `header` (erstes Kind display:none) und `.link-grid-wrap` (.link-grid-title
-   bringt eigene margins mit) bei `gap`. */
+   verliert gegen jedes Kind, das denselben Rand selbst setzt — im Link-Grid
+   genau passiert, das löst deshalb weiter unten über die Titel-Margins.
+   `header` bleibt bei `gap`: sein erstes Kind ist oberhalb 700px display:none,
+   ein Geschwister-Selektor erfände dort einen Abstand vor dem Punkt. */
 .placeholder > * + * { margin-top: 10px; }
 .placeholder svg { opacity: 0.25; }
 .placeholder p   { font-size: 13px; color: var(--n3); }
 
 /* ── Link-Grid (Default-View, Flame-Ersatz) ───────────── */
-.link-grid-wrap { display: flex; flex-direction: column; gap: 18px; }
+/* Kein `gap` hier: die Kinder wechseln flach zwischen <h3> und Grid, also trägt
+   der Titel seine Abstände selbst — oben zum vorigen Grid, unten zu seinem
+   eigenen. Das ist zugleich die Fassung, die ohne Flex-`gap` auskommt (Safari
+   vor 14.1) und die nicht mit den eigenen Rändern des Titels konkurriert. */
+.link-grid-wrap { display: flex; flex-direction: column; }
 .link-grid-title {
   font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 1px;
-  color: var(--n4); margin: 6px 0 -4px 2px;
+  color: var(--n4); margin: 22px 0 8px 2px;
 }
+.link-grid-title:first-child { margin-top: 6px; }
 .link-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
