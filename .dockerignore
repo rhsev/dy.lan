@@ -2,5 +2,13 @@
 .git
 .DS_Store
 *.md
+*.backup
 test_performance.rb
 docker-compose.yml
+
+# Runtime state and local working files — they change constantly and would
+# give every rebuild a new image ID
+data/
+local/
+config/*.bak*
+config/*.yaml.[0-9]*
