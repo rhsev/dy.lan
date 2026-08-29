@@ -49,7 +49,7 @@ No TLS overhead, no auth layer, no cloud dependency. If you want access
 from the road, put Tailscale or a similar zero-trust network in front. No third party gets remote-control rights to your Mac.
 
 **Lean, modern Ruby**  
-Ruby 4 with async/Fiber, ~2,500 lines of Ruby, ~25 MB RAM in steady state.
+Ruby 4 with async/Fiber, ~3,000 lines of Ruby, ~35 MB RAM in steady state.
 No database, no build step, no framework used. Stage - a template plugin for browser
 UI - is ~440 lines of JS. 
 
@@ -207,8 +207,8 @@ Ruby 4 with [async](https://github.com/socketry/async) +
 is three lines: `async`, `async-http`, `protocol-http`. Everything else
 is stdlib.
 
-**Memory (~25 MB)**  
-Ruby heap (~15 MB base) + ~2,500 LOC of application code + the cached
+**Memory (~35 MB)**  
+Ruby heap (~15 MB base) + ~3,000 LOC of application code + the cached
 font file. That's it.
 
 **Performance**  

@@ -1,13 +1,16 @@
 # Milan Connect Configuration
 # Dylan plugin for remote script execution on macOS
+#
+# Example values. The deployed copy owns the real agent addresses and is
+# never overwritten by a sync (twin `Own:`) — edit them where dylan runs.
 
 milan:
   enabled: true
 
   # Milan agents (name -> URL)
   agents:
-    mini: "http://192.168.1.118:8080"   # Mac Mini
-    book: "http://192.168.1.195:8080"   # MacBook
+    mini: "http://192.168.1.10:8080"   # Mac Mini
+    book: "http://192.168.1.11:8080"   # MacBook
 
   # Tailscale example:
   # agents:
