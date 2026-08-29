@@ -167,7 +167,9 @@ if (!aside.querySelector('.btn')) document.body.classList.add('no-sidebar');
 })();
 
 /* ── Mobile-Drawer ─────────────────────────────────────── */
-const MOBILE_BREAKPOINT = 700;
+// Muss mit der Drawer-Query in style.css übereinstimmen (iPad mini hochkant
+// = 744 pt, liegt darunter).
+const MOBILE_BREAKPOINT = 834;
 const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT;
 
 function setDrawer(open) {

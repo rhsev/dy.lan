@@ -76,6 +76,33 @@ class PanelTest < Minitest::Test
 
   # ── Kacheln ──────────────────────────────────────────────────────────────
 
+  # Das Board ist eine flache Liste: die Sektionen aus der YAML ordnen die
+  # Kacheln, erscheinen aber nicht als Überschrift. Nur so bleiben alle
+  # Kacheln gleich breit.
+  def test_board_is_flat_and_keeps_yaml_order
+    sections = [{ 'title' => 'Läuft',
+                  'buttons' => [{ 'id' => 'a', 'type' => 'widget', 'target' => 'a' }] },
+                { 'title' => 'Zustand',
+                  'buttons' => [{ 'id' => 'na', 'type' => 'widget', 'target' => 'na' }] }]
+    _, _, html = get_widgets(stage(sections), [])
+
+    refute_includes html, 'Läuft'
+    refute_includes html, 'tile-section'
+    assert_equal 1, html.scan('class="tile-board"').size
+    assert_operator html.index('data-target="a"'), :<, html.index('data-target="na"')
+  end
+
+  # discover-Kacheln hängen an ihrer Sektion, nicht am Ende des Boards —
+  # sonst wandert eine Wegwerf-Kachel vor die konfigurierten der Sektion.
+  def test_discovered_tiles_follow_their_section
+    sections = [{ 'title' => 'Sonstiges', 'discover' => true },
+                { 'title' => 'Zustand',
+                  'buttons' => [{ 'id' => 'na', 'type' => 'widget', 'target' => 'na' }] }]
+    _, _, html = get_widgets(stage(sections), [widget('spontan'), widget('na')])
+
+    assert_operator html.index('data-target="spontan"'), :<, html.index('data-target="na"')
+  end
+
   def test_tile_shows_pushed_state
     status, _, html = get_widgets(stage(tile_section),
                                   [widget('copy', text: 'archive.zip', progress: 42, ttl: 120)])

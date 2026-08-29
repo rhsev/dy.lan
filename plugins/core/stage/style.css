@@ -147,9 +147,15 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 }
 
 /* ── Panel ──────────────────────────────────────────────── */
+/* Als Container angemeldet, damit das Board unten nach der *Panelbreite*
+   fragen kann statt nach der Fensterbreite. Ob neben dem Panel eine
+   Seitenleiste steht, hängt am Breakpoint ganz unten — das Board muss diese
+   Zahl so nicht ein drittes Mal kennen. */
 .panel {
   flex: 1; padding: 22px 26px;
   overflow-y: auto; background: var(--n0);
+  container-type: inline-size;
+  container-name: panel;
 }
 
 .panel::-webkit-scrollbar { width: 5px; }
@@ -169,7 +175,7 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
    ACHTUNG beim Erweitern: `> * + *` hat die Spezifität einer Klasse und
    verliert gegen jedes Kind, das denselben Rand selbst setzt — im Link-Grid
    genau passiert, das löst deshalb weiter unten über die Titel-Margins.
-   `header` bleibt bei `gap`: sein erstes Kind ist oberhalb 700px display:none,
+   `header` bleibt bei `gap`: sein erstes Kind ist oberhalb 834px display:none,
    ein Geschwister-Selektor erfände dort einen Abstand vor dem Punkt. */
 .placeholder > * + * { margin-top: 10px; }
 .placeholder svg { opacity: 0.25; }
@@ -222,17 +228,66 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 body.no-sidebar aside,
 body.no-sidebar .menu-toggle { display: none; }
 
-.tile-section {
-  font-size: 10px; font-weight: 700;
-  letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--n4); margin: 14px 0 8px 2px;
+/* Board: eine flache Liste Kacheln, eine Spalte, ab genug Platz zwei. Mehr
+   nicht — das Board ist eine Übersicht, keine Tapete.
+
+   Feste Kachelbreite statt mitwachsender Spalten: eine Kachel ist überall so
+   breit wie auf dem iPhone. Das hält die Kachelgestaltung einfach — wer eine
+   Kachel baut, kennt ihre Breite — und macht den Zeilenumbruch im Text
+   überall gleich. Das Board ist deshalb auf zwei Kachelbreiten gedeckelt und
+   nimmt auf einem breiten Schirm bewusst nicht die ganze Fläche.
+
+   Multicol statt Grid: der Umbruch verteilt die Kacheln nach Höhe und füllt
+   dort auf, wo noch Platz ist. `break-inside` hält die einzelne Kachel ganz —
+   oben abgeschnitten wäre sie unlesbar. Die -webkit-Varianten sind für Safari
+   vor 10, dieselbe Generation, für die weiter oben `gap` im Flexbox vermieden
+   wird.
+
+   Der Breakpoint zählt die Sidebar (220px) und das Panel-Padding mit: erst ab
+   976px hat das Board seine vollen zwei Kachelbreiten. Darunter eine Spalte —
+   lieber Platz rechts frei als zwei zu schmale Kacheln. */
+.tile-board {
+  --tile-col: 343px;                     /* iPhone 15: 393px minus Panel-Padding */
+  --tile-gap: 16px;                      /* waagerecht wie senkrecht derselbe */
+  max-width: var(--tile-col);
+  -webkit-column-gap: var(--tile-gap); column-gap: var(--tile-gap);
 }
-.tile-section:first-child { margin-top: 0; }
-.tile-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 10px;
+.tile {
+  margin-bottom: var(--tile-gap);
+  -webkit-column-break-inside: avoid;
+          break-inside: avoid;
 }
+.tile:last-child { margin-bottom: 0; }
+
+/* Auf dem Telefon füllt die Kachel das Panel. Die feste Breite ist dort nur
+   im Weg: Telefone sind zwischen 320 und 430 Punkt breit, jede feste Zahl
+   lässt auf der Hälfte davon einen Streifen frei. Gleich breit bleiben die
+   Kacheln trotzdem — untereinander gibt es ja nur die eine Spalte. */
+@media (max-width: 700px) {
+  .tile-board { max-width: none; }
+}
+
+/* Zwei Spalten, sobald zwei Kacheln nebeneinander Platz haben. Die
+   Fensterbreite taugt dafür nicht: hochkant misst das iPad mini 744 pt und
+   hat ohne Seitenleiste reichlich Platz, mit ihr keine 500. Gefragt ist
+   deshalb das Panel selbst.
+
+   Die Media-Query darüber bleibt als Rückfall für Browser ohne Container
+   Queries (Safari vor 16): dort entscheidet weiter die Fensterbreite, mit
+   Seitenleiste gerechnet. Wo beide greifen, sagen sie dasselbe. */
+@media (min-width: 976px) {
+  .tile-board {
+    max-width: calc(var(--tile-col) * 2 + var(--tile-gap));
+    -webkit-columns: 2; columns: 2;
+  }
+}
+@container panel (min-width: 702px) {
+  .tile-board {
+    max-width: calc(var(--tile-col) * 2 + var(--tile-gap));
+    columns: 2;
+  }
+}
+
 .tile {
   background: var(--n2);
   border: 1px solid var(--n3);
@@ -276,7 +331,11 @@ body.no-sidebar .menu-toggle { display: none; }
   font-size: 12px; line-height: 1.55;
   color: var(--n5);
   white-space: pre-wrap; word-break: break-word;
-  max-height: 7.5em; overflow: hidden;
+  /* Wächst mit dem Inhalt — die alte Kappung bei 7.5em zeigte von sechs
+     check-ops-Zeilen nur vier. Eine Grenze bleibt, nur viermal so weit
+     (~19 Zeilen): ein Tile ist ein Zustand, kein Log, und ein versehentlich
+     hineingeleitetes Log darf das Board nicht sprengen. */
+  max-height: 30em; overflow: hidden;
 }
 .tile-bar {
   height: 4px; border-radius: 2px;
@@ -560,7 +619,13 @@ body.no-sidebar .menu-toggle { display: none; }
 
 .backdrop { display: none; }
 
-@media (max-width: 700px) {
+/* 834 statt 700, damit die iPads hochkant mitkommen: mit fester Seitenleiste
+   blieben dem Panel dort keine 500 pt. 834 ist das breiteste Hochkant-iPad
+   (Pro 11"); mini 744, iPad 10.2" 810, Air und iPad 10.9" 820 liegen darunter.
+   Die Kachelbreite weiter oben hat ihre eigene Grenze bei 700 und bleibt davon
+   unberührt — auf dem iPad soll die Kachel nicht mit dem Panel mitwachsen.
+   Die Zahl steht ein zweites Mal in app.js (MOBILE_BREAKPOINT). */
+@media (max-width: 834px) {
   /* Header kompakter auf schmalen Screens */
   header        { padding: 8px 12px; }
   header h1     { font-size: 14px; }

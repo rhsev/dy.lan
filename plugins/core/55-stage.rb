@@ -392,13 +392,24 @@ class StageBase < Dylan::Plugin
     end
   end
 
+  # Die mtime dieser Datei, einmal beim Laden gelesen. Ruby-Code greift
+  # ohnehin erst nach dem Neustart des Prozesses — der Wert ist danach also
+  # automatisch der des frisch deployten Renderers.
+  RENDERER_MTIME = File.mtime(__FILE__).to_i
+
   # Config mtime is part of the digest: renaming a tile in the YAML must show
   # up even when no script has pushed since.
+  #
+  # Und die Quelle des Renderers: nach einem Deploy liefert derselbe Zustand
+  # anderes Markup. Ohne sie antwortet der Server auf den nächsten Poll mit
+  # 304 und der Browser zeigt die alte Kachelfassung weiter — nach dem Umbau
+  # auf das flache Board kamen so die Sektionsüberschriften zurück.
   def widgets_etag(widgets)
     material = widgets.map do |widget|
       [widget['target'], widget['updated_at'], stale?(widget) ? 1 : 0].join(':')
     end
-    %("#{Digest::SHA256.hexdigest([config_mtime.to_i, *material].join('|'))[0, 16]}")
+    digest = [RENDERER_MTIME, config_mtime.to_i, *material].join('|')
+    %("#{Digest::SHA256.hexdigest(digest)[0, 16]}")
   end
 
   def stale?(widget)
@@ -410,30 +421,31 @@ class StageBase < Dylan::Plugin
   # Sections keep their order from the YAML; `discover: true` appends every
   # target Milan knows that no configured tile claims — that saves maintaining
   # the YAML for throwaway targets.
+  #
+  # Die Sektionstitel ordnen nur, sie erscheinen nicht: das Board ist eine
+  # flache Liste Kacheln. Jede Kachel trägt ihr Label ohnehin selbst, und ohne
+  # Zwischenüberschriften bleiben alle Kacheln gleich breit — was für den
+  # Zwei-Spalten-Umbruch in style.css die Voraussetzung ist.
   def render_widget_board(widgets, host = nil)
     by_target = widgets.each_with_object({}) { |w, acc| acc[w['target'].to_s] = w }
     claimed   = all_buttons.select { |b| b['type'] == 'widget' }
                            .map    { |b| (b['target'] || b['id']).to_s }
 
-    blocks = sections.filter_map do |sec|
-      tiles = (sec['buttons'] || []).select { |b| b['type'] == 'widget' }.map do |btn|
+    tiles = sections.flat_map do |sec|
+      configured = (sec['buttons'] || []).select { |b| b['type'] == 'widget' }.map do |btn|
         target = (btn['target'] || btn['id']).to_s
         render_widget_tile(btn, by_target[target], target, host)
       end
 
-      if sec['discover']
-        (widgets.map { |w| w['target'].to_s } - claimed).each do |target|
-          tiles << render_widget_tile({}, by_target[target], target, host)
-        end
-      end
+      next configured unless sec['discover']
 
-      next if tiles.empty?
-      %(<h3 class="tile-section">#{CGI.escape_html(sec['title'].to_s)}</h3>) +
-        %(<div class="tile-grid">#{tiles.join}</div>)
+      configured + (widgets.map { |w| w['target'].to_s } - claimed).map do |target|
+        render_widget_tile({}, by_target[target], target, host)
+      end
     end
 
-    return '<div class="tile-empty">Keine Kacheln.</div>' if blocks.empty?
-    %(<div class="tile-board">#{blocks.join}</div>)
+    return '<div class="tile-empty">Keine Kacheln.</div>' if tiles.empty?
+    %(<div class="tile-board">#{tiles.join}</div>)
   end
 
   # A configured tile without data still gets drawn — an empty slot says
