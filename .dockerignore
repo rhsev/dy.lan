@@ -7,6 +7,11 @@
 test_performance.rb
 docker-compose.yml
 
+# Synology metadata sidecars (extended attributes, thumbnails, index data).
+# DSM hides these over SMB, so they are invisible from macOS — but they are
+# real files in the build context on a NAS deployment.
+**/@eaDir
+
 # Runtime state and local working files — they change constantly and would
 # give every rebuild a new image ID
 data/
