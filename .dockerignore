@@ -11,5 +11,7 @@ docker-compose.yml
 # give every rebuild a new image ID
 data/
 local/
+config/stage.yaml
+config/board.yaml
 config/*.bak*
 config/*.yaml.[0-9]*
