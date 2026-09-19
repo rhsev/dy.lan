@@ -92,6 +92,8 @@ class StageBase < Dylan::Plugin
     when %r{^/panel/([\w-]+)$}
       id = Regexp.last_match(1)
       fetch_request?(request) ? handle_panel(id, request, host) : handle_index(id)
+    when %r{^/bookmarks/(.+)$}
+      handle_bookmarks_frame(Regexp.last_match(1))
     when '/jobs/check'
       handle_jobs_check
     when '/agents/status'
@@ -140,6 +142,7 @@ class StageBase < Dylan::Plugin
                when 'widget' then handle_widgets(request, host)
                when 'jobs'   then handle_jobs_view
                when 'notes'  then render_notes_panel(btn['source'] || btn['id'])
+               when 'bookmarks' then render_bookmarks_panel(btn['source'] || 'all')
                else Dylan::Response.error(404, "Panel '#{CGI.escape_html(id)}' not found")
                end
 
@@ -221,6 +224,30 @@ class StageBase < Dylan::Plugin
       response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}")
       files    = JSON.parse(response.body.empty? ? '[]' : response.body)
       Dylan::Response.html(notes_panel_html(files, source_id))
+    end
+  end
+
+  # Bookmarks panel: the live pinboard script (a milan custom script), embedded
+  # and CSS-isolated in an iframe. `source` is the pinboard path tail — a view
+  # and/or scope, e.g. "all", "read", "read/articles".
+  #
+  # Lazy delivery: the panel handler returns instantly with just the iframe; its
+  # src points at the stage's own /bookmarks/<arg> route (below), which fetches
+  # the page from milan as a separate request. So the heavy render never blocks
+  # the panel handler, and a cold connect shows as iframe loading rather than an
+  # "execution expired" panel error. pinboard.rb stays the sole renderer.
+  def render_bookmarks_panel(arg)
+    src = "#{self.class.url_prefix}/bookmarks/#{arg}"
+    Dylan::Response.html(%(<iframe class="cb-panel" src="#{CGI.escape_html(src)}"></iframe>))
+  end
+
+  # The iframe's own document: the live pinboard page fetched from milan. Served
+  # by the stage plugin so it matches the pad host, unlike the domain-gated
+  # /mini/ proxy (which returns the pad itself when the host lacks *.lan).
+  def handle_bookmarks_frame(arg)
+    Dylan::Milan.rescued(notes_agent, label: 'Bookmarks') do
+      response = Dylan::Milan.get(notes_agent, "/pinboard/#{arg}")
+      Dylan::Response.html(response.body)
     end
   end
 
@@ -712,7 +739,7 @@ class StageBase < Dylan::Plugin
   def badge_agent_for(btn)
     kind = btn['type'] == 'panel' ? btn['panel'] : btn['type']
     case kind
-    when 'notes'
+    when 'notes', 'bookmarks'
       candidate = notes_agent
       Dylan::Milan.agents.key?(candidate) ? candidate : nil
     when 'jobs'
