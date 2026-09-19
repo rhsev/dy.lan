@@ -110,13 +110,15 @@ module Dylan
       # als 'stream_error'-Event in den Stream (nicht als HTTP-Status, weil
       # die SSE-Response schon offen ist). Markiert das Ende mit 'done'.
       #
-      # Caller behält Verantwortung für body.close (typischerweise via ensure).
+      # Caller behält Verantwortung für den Abschluss — via `ensure body.close_write`.
+      # NICHT `close`: das leert die Queue und verwirft die beiden Ereignisse,
+      # die diese Methode im Fehlerfall gerade geschrieben hat.
       #
       #   Dylan::Response.sse do |body|
       #     Async do
       #       Dylan::Milan.proxy_sse(agent, path, body)
       #     ensure
-      #       body.close
+      #       body.close_write
       #     end
       #   end
       def proxy_sse(agent_name, path, sse_body)

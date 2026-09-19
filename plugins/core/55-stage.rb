@@ -411,11 +411,17 @@ class StageBase < Dylan::Plugin
 
     # Errors (including unknown agent) flow through the stream_error event;
     # app.js catches them and displays the message in the output frame.
+    #
+    # close_write, not close: `write` does not yield, so the producer runs from
+    # its last write straight into this ensure — and `close` clears the queue
+    # before the reader has been anywhere near it. proxy_sse writes stream_error
+    # and done back to back, so both used to be discarded, the browser saw a
+    # bare EOF, and app.js reported a failed stream as a clean finish.
     Dylan::Response.sse do |body|
       Async do
         Dylan::Milan.proxy_sse(agent_name, milan_path, body)
       ensure
-        body.close
+        body.close_write
       end
     end
   end

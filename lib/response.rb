@@ -59,6 +59,11 @@ module Dylan
     # SSE (Server-Sent Events) Streaming Response
     # Yields a Protocol::HTTP::Body::Writable; caller starts an Async task inside the block.
     # The block returns immediately; the response streams as chunks are written.
+    #
+    # Der Produzent beendet mit **close_write**, nicht mit `close`. `close` ruft
+    # `@queue.clear` und wirft weg, was der Leser noch nicht abgeholt hat — und
+    # da `write` nicht yieldet, ist das verlässlich das letzte geschriebene
+    # Ereignis. Genau daran gingen `stream_error` und `done` verloren.
     # @yieldparam body [Protocol::HTTP::Body::Writable]
     def self.sse
       body = Protocol::HTTP::Body::Writable.new
