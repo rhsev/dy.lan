@@ -40,7 +40,7 @@ SUBNET="${SUBNET:-192.168.1}"
 # of claiming an empty device list. Do NOT use the docker host's own address:
 # it sits on the macvlan parent interface, and macvlan children cannot reach
 # their host by design, so it is ALWAYS missing from the sweep.
-REFERENCE_IP="${REFERENCE_IP:-$SUBNET.150}"
+REFERENCE_IP="${REFERENCE_IP:-$SUBNET.20}"
 
 # Base URL of the milan agent that acts as this monitor's vantage point on the
 # LAN — used for reachability probes and for pushing board tiles.
