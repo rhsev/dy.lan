@@ -103,7 +103,7 @@ end
 
 ## Plugin Folder Structure
 
-Plugins live in three subdirectories of `plugins/`. The loader scans
+Plugins live in four subdirectories of `plugins/`. The loader scans
 **all of them recursively** and sorts by **basename** (so the numeric prefix
 controls priority across folders, not within them).
 
@@ -123,8 +123,9 @@ plugins/
 │   ├── 30-pattern-redirect.rb
 │   ├── 60-weather-demo.rb
 │   └── 65-monitor.rb
-└── custom/    # your private plugins — gitignored
-    └── 56-my-stage.rb       # example: private Stage instance
+├── custom/    # your private plugins — gitignored, deployed everywhere
+│   └── 56-my-stage.rb       # example: private Stage instance
+└── local/     # belongs to ONE deployment — never travels, usually empty
 ```
 
 **Where should your plugin go?**
@@ -135,7 +136,34 @@ plugins/
 - **`extra/`** — public examples, generic helpers, anything you'd be happy
   to publish on GitHub.
 - **`custom/`** — anything that contains inline secrets, personal config,
-  or device-specific behavior. Gitignored by default.
+  or domain-specific behavior. Gitignored by default. **This is where a
+  private plugin belongs**; it is still written at the source and deployed
+  to every installation.
+- **`local/`** — for a plugin you write **on the running installation**
+  rather than at the source. Normally empty, and normally the wrong answer:
+  work at the source and let it deploy.
+
+`local/` exists because deployment is one-directional. A sync runs source →
+target and compares what the source knows; a file born on the target is not
+"newer", it is simply unknown. Under a job that prunes what the source does
+not have (with twin: `Delete: true`) the next sync therefore removes it,
+without asking, because from the tool's side there is nothing to ask about.
+A careful tool keeps a copy — twin runs rsync with `--backup-dir`, and rsync
+renames rather than unlinks "each file to be deleted or overwritten" — so the
+plugin is recoverable afterwards. It is still gone from the load path, and
+nothing said so. So if you do edit where Dylan runs — quick fix in place, a
+route only this installation needs, something you cannot try out anywhere
+else — put it in `local/` and tell the deploying tool to keep its hands off
+(with twin: `Own: local` on the `plugins` job, which protects it from
+overwrite **and** from `--delete`).
+
+It is a deployment boundary, not a privacy one, and the two are easy to
+confuse. `custom/` already keeps a plugin out of the public repo, and that is
+usually all that is wanted — a plugin that merely holds secrets belongs
+there, written at the source and deployed like everything else. The same
+boundary is what lets two installations differ on purpose, but that is the
+rarer case; the everyday one is simply: this file was made here, so it stays
+here.
 
 **Convention**: If a plugin has its config in YAML (e.g. `redirects.yaml`),
 it can stay generic in `extra/`. If a plugin hardcodes domain-specific

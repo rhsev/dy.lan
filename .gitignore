@@ -8,6 +8,10 @@ docker-compose.infrastructure.yml
 # Private plugins (contain inline config / secrets)
 plugins/custom/
 
+# Plugins written on the deployment itself — they live there, not here.
+# See PLUGINS.md, "Plugin Folder Structure".
+plugins/local/
+
 # Stage-Plattform ist public (StageBase + Assets + ManageStage als
 # Maintenance-Instanz). Die persönliche Stage-Instanz (config/stage.yaml +
 # plugins/custom/56-stage.rb) bleibt privat. Dasselbe für die Board-Instanz
