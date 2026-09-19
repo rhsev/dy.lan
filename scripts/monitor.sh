@@ -3,20 +3,20 @@
 # and writes it to /app/data/monitor.md. The Dylan plugin serves the file as
 # text/plain; Stage (Output-Box) and direct /monitor visits see the same text.
 #
-# Seit 27.08.2026 zwei Sektionen: die WACHE (sind bestimmte Geräte an —
-# der Ursprungszweck; VMs, auch als Board-Tiles) und der SWEEP (wer
-# antwortet gerade im /24, mit PTR-Namen — die Nachschlage-Ansicht). Die
-# alte Services-Sektion (milan-Ports) ist von /probe und den Stage-Badges
-# abgedeckt; die LiveSync-Zeilen leben als Board-Tiles weiter — dieses
-# Skript bleibt ihr WÄCHTER (unten).
+# Two sections since 2026-08-27: the WATCH (are specific devices up — the
+# original purpose; VMs, also as board tiles) and the SWEEP (who answers in
+# the /24 right now, with PTR names — the lookup view). The old services
+# section (milan ports) is covered by /probe and the Stage badges; the
+# LiveSync lines live on as board tiles — this script remains their WATCHDOG
+# (below).
 #
-# Cron schedule: config/crontab (alle 5 Minuten).
+# Cron schedule: config/crontab (every 5 minutes).
 #
-# Robustheit:
-#   - Atomic write via temp file + mv: Reader sehen nie eine halb-geschriebene
-#     Datei; während des Laufs bleibt die alte monitor.md verfügbar.
-#   - TZ explizit setzen: Cronie erbt nicht zwingend die Container-ENV,
-#     `date` gäbe sonst UTC aus.
+# Robustness:
+#   - Atomic write via temp file + mv: readers never see a half-written file,
+#     and the previous monitor.md stays available for the length of a run.
+#   - TZ set explicitly: cronie does not necessarily inherit the container
+#     environment, and `date` would print UTC.
 
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
@@ -51,10 +51,10 @@ MILAN_URL="${MILAN_URL:-http://localhost:8080}"
 # otherwise, so a conf predating this key cannot break the loop below.
 declare -a LIVESYNC_AGENTS
 
-# ── Wachliste: sind BESTIMMTE Geräte an? ──────────────────────────────────
-# Der eigentliche Ursprungszweck dieses Monitors. Ergebnis wandert doppelt:
-# als Tile aufs Board und als erste Sektion in den Report. Die Tabelle selbst
-# (samt Felddoku) liegt in monitor-watch.conf, zusammen mit den Adressen.
+# ── Watch list: are SPECIFIC devices up? ─────────────────────────────────
+# The original purpose of this monitor. The result goes two ways: a tile on
+# the board and the first section of the report. The table itself, field
+# documentation included, sits in monitor-watch.conf next to the addresses.
 #
 # A device on the `mini` vantage point is probed through the milan agent
 # rather than from here: the container cannot see every corner of the LAN.
@@ -80,7 +80,7 @@ for target in "${!WATCH[@]}"; do
   fi
 done
 
-# ── Sweep: aktive Geräte im /24 ───────────────────────────────────────────
+# ── Sweep: which devices answer in the /24 ───────────────────────────────
 SWEEP_TMP=$(mktemp)
 for i in $(seq 1 254); do
   ( ping -c 1 -W 1 "$SUBNET.$i" >/dev/null 2>&1 && echo "$SUBNET.$i" >> "$SWEEP_TMP" ) &
@@ -100,8 +100,8 @@ wait
   echo "## Aktive Geräte ($(wc -l < "$SWEEP_TMP" | tr -d ' '))"
   echo
   sort -t. -k4 -n "$SWEEP_TMP" | while read -r ip; do
-    # Nur das erste Label: der Container-Resolver hängt die Tailscale-Domain
-    # an, und ein PTR-loses Gerät kommt als seine eigene IP zurück.
+    # First label only: the container resolver appends the tailscale domain,
+    # and a device without a PTR record comes back as its own address.
     name=$(getent hosts "$ip" 2>/dev/null | awk '{print $2}')
     name="${name%%.*}"
     [[ "$name" == "${ip%%.*}" || "$name" == "$ip" ]] && name=""
@@ -133,17 +133,17 @@ push_tile() { # target title color icon text
     >/dev/null 2>&1 || true
 }
 
-# Wachlisten-Tiles (gesammelt oben, gepusht hier — nach der Definition).
+# Watch-list tiles: collected above, pushed here — after push_tile exists.
 for entry in "${watch_push[@]}"; do
   IFS='|' read -r target label color icon text <<< "$entry"
   push_tile "$target" "$label" "$color" "$icon" "$text"
 done
 
-# Neustart anfordern und die Antwort NICHT wegwerfen. livesync-restart.rb
-# meldet Fehlschläge im Klartext, und genau die gingen am 2026-08-01 zwanzig
-# Stunden lang ins Leere (622 Aufrufe, "you do not exist in the passwd
-# database"). Ein fehlgeschlagener Neustart überschreibt deshalb das Tile —
-# das letzte Wort auf dem Board ist die Wahrheit.
+# Request a restart and do NOT throw the answer away. livesync-restart.rb
+# reports failures in plain words, and those were exactly what went nowhere
+# for twenty hours on 2026-08-01 (622 calls, "you do not exist in the passwd
+# database"). A failed restart therefore overwrites the tile — the last word
+# on the board is the truth.
 request_restart() {
   local url="$1" target="$2" r
   r=$(curl -s --max-time 30 "$url/livesync-restart" 2>&1)
@@ -164,12 +164,12 @@ fi
 for entry in "${LIVESYNC_AGENTS[@]}"; do
   t="${entry%%:*}"; url="${entry#*:}"
   out=$(curl -sf --max-time 10 "$url/livesync" 2>/dev/null)
-  [[ -z "$out" ]] && continue   # schläft/weg → kein Push, Tile vergraut
+  [[ -z "$out" ]] && continue   # asleep or away → no push, the tile greys out
 
   up_h=$(echo "$out" | grep -oE "Uptime [0-9]+h" | grep -oE "[0-9]+" | head -1)
   if echo "$out" | grep -q "gesperrt"; then
-    # Remote-DB gesperrt (z. B. nach iPhone-Rebuild/Doctor) — Neustart hilft
-    # NICHT, nur anzeigen.
+    # Remote database locked (e.g. after an iPhone rebuild or doctor run) —
+    # a restart does NOT help here, so only report it.
     push_tile "livesync-$t" "LiveSync $t" EBCB8B warn "Remote gesperrt, Unlock nötig"
   elif echo "$out" | grep -qiE "Crash|cannot be initialised|OpenError"; then
     push_tile "livesync-$t" "LiveSync $t" BF616A warn "Crash, Neustart angefordert"
