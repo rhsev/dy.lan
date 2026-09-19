@@ -14,10 +14,17 @@ RUN apk add --no-cache --virtual .build-deps build-base \
  && apk del .build-deps
 
 # Bake in app code as a fallback — works out of the box without volume mounts.
-# In production, docker-compose mounts lib/, plugins/, config/, scripts/ and
-# server.rb on top, so a git pull + container restart picks up all changes
-# without a rebuild. Only Gemfile changes require a new image build.
-COPY . .
+# Copied path by path rather than `COPY . .`: the build context is a live
+# production directory, and a wildcard copy kept dragging in whatever else
+# happened to sit there (Synology @eaDir sidecars, host config files, editor
+# leftovers), rebuilding the image on nights when no code had changed.
+# In production, docker-compose mounts the whole directory on /app anyway, so
+# this layer only matters when running without mounts.
+COPY server.rb ./
+COPY lib/ ./lib/
+COPY plugins/ ./plugins/
+COPY config/ ./config/
+COPY scripts/ ./scripts/
 
 EXPOSE 80
 
