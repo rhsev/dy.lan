@@ -55,6 +55,13 @@ module Dylan
         Dylan::Response.error(503, "#{label} agent not configured: #{agent_name}")
       rescue UnreachableError
         Dylan::Response.error(503, "#{label} '#{agent_name}' unreachable")
+      # The router aborts plugin.call when the plugin's time budget runs out
+      # (lib/router.rb), and Async::TimeoutError is a StandardError — so it used
+      # to land in the generic branch below and come out as
+      # "Album error: execution expired", blaming the agent for a deadline it
+      # never saw. Say whose deadline it was.
+      rescue Async::TimeoutError
+        Dylan::Response.error(504, "#{label} exceeded the plugin's time budget (the agent may still be working)")
       rescue => e
         Dylan::Response.error(502, "#{label} error: #{e.message}")
       end

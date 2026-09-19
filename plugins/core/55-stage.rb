@@ -250,10 +250,7 @@ class StageBase < Dylan::Plugin
   # by the stage plugin so it matches the pad host, unlike the domain-gated
   # /mini/ proxy (which returns the pad itself when the host lacks *.lan).
   def handle_bookmarks_frame(arg)
-    Dylan::Milan.rescued(notes_agent, label: 'Bookmarks') do
-      response = Dylan::Milan.get(notes_agent, "/pinboard/#{arg}")
-      Dylan::Response.html(response.body)
-    end
+    stream_milan_page("/pinboard/#{arg}", label: 'Bookmarks')
   end
 
   # Albums panel: same shape as the bookmarks panel above — an iframe on the
@@ -270,11 +267,55 @@ class StageBase < Dylan::Plugin
   # image paths point at milan's /notes/... route; they have to travel through
   # this stage instance, which is the only thing here that can reach milan.
   def handle_album_frame(binder)
-    Dylan::Milan.rescued(notes_agent, label: 'Album') do
-      response = Dylan::Milan.get(notes_agent, "/album/#{binder}")
-      prefix   = self.class.url_prefix
-      Dylan::Response.html(response.body.gsub(%r{\b(src|href)="/notes/}) { %(#{$1}="#{prefix}/notes/) })
+    stream_milan_page("/album/#{binder}", label: 'Album')
+  end
+
+  # Both frame routes proxy a *script run*, not a lookup: `register album`
+  # renders thumbnails the first time an album is opened, and the pinboard runs
+  # grubber over the store. Either can outlast the stage's 5s budget, and the
+  # router's abort surfaced as "Album error: execution expired" — a milan error
+  # for a deadline milan never saw.
+  #
+  # Streaming takes these two routes out of the budget altogether: `call`
+  # returns the moment the body exists, and the body fills afterwards — the same
+  # escape the SSE proxy already uses. The panel handlers stay inside the budget
+  # where they belong; only the iframe documents move.
+  #
+  # The cost is that the status is committed before the fetch, so a failure has
+  # to arrive as a message inside the frame. In an iframe that is the better
+  # trade anyway: a 502 renders as a blank panel, a sentence does not.
+  def stream_milan_page(path, label:)
+    prefix = self.class.url_prefix
+    body   = Protocol::HTTP::Body::Writable.new
+
+    Async do
+      html = Dylan::Milan.get(notes_agent, path).body
+      body.write(html.gsub(%r{\b(src|href)="/notes/}) { %(#{$1}="#{prefix}/notes/) })
+    rescue => e
+      body.write(frame_error_html(label, e.message))
+    ensure
+      # close_write, nicht close: `close` macht `@queue.clear` und wirft damit
+      # genau die Chunks weg, die der Leser noch nicht abgeholt hat — hier also
+      # die ganze Seite, weil sie in einem Stück geschrieben wird.
+      body.close_write
     end
+
+    Async::HTTP::Protocol::Response[200,
+      { 'content-type'  => 'text/html; charset=UTF-8',
+        'cache-control' => 'no-cache' },
+      body]
+  end
+
+  # Readable inside the panel, in the panel's own colours, and without a
+  # stylesheet request that would have to succeed first.
+  def frame_error_html(label, message)
+    <<~HTML
+      <body style="margin:0;padding:24px;background:#2E3440;color:#D8DEE9;
+                   font:13px/1.6 -apple-system,BlinkMacSystemFont,sans-serif">
+        <strong style="color:#BF616A">#{CGI.escape_html(label)} nicht erreichbar</strong>
+        <p style="margin:.6em 0 0">#{CGI.escape_html(message)}</p>
+      </body>
+    HTML
   end
 
   def notes_panel_html(files, source_id)
