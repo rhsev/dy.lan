@@ -74,15 +74,13 @@ module Dylan
       end
 
       # Sammelt Body in Memory. Für kleine/JSON-Antworten.
-      # Wiederholt sich einmal auf frischer Verbindung, wenn der gepoolte Client
-      # tot war — siehe with_fresh_retry.
       # @raise [UnknownAgentError] wenn Agent nicht in Config
       # @raise [UnreachableError]  wenn Verbindung scheitert
       def get(agent_name, path)
-        with_fresh_retry(agent_name) do |client|
-          response = client.get(path)
-          Response.new(response.status, response.headers, response.read.to_s)
-        end
+        response = client_for(agent_name).get(path)
+        Response.new(response.status, response.headers, response.read.to_s)
+      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
+        raise UnreachableError.new(agent_name, e.message)
       end
 
       # Streamt Body chunk-weise an den Block (low-level Variante).
@@ -187,36 +185,6 @@ module Dylan
       def client_for(name)
         url = agent_url(name) or raise UnknownAgentError.new(name)
         pool.for(url)
-      end
-
-      # Ein gepoolter Client kann tot sein, ohne dass es jemand gemerkt hat:
-      # Milan startet neu, seine Seite des Keep-Alive verschwindet, und der
-      # nächste Request scheitert an einem Socket, den wir ausgegeben haben —
-      # nicht an einem, den wir gerade öffnen. Das ist der erste Aufruf nach
-      # jedem Milan-Neustart; er kam als 502 heraus, obwohl der Agent nachweislich
-      # lief. GET ist idempotent, also: toten Client wegwerfen, einmal neu
-      # versuchen.
-      #
-      # Fehler beim *Aufbau* einer Verbindung werden bewusst nicht wiederholt.
-      # Wenn Milan die Verbindung ablehnt oder nicht erreichbar ist, verdoppelt
-      # ein zweiter Versuch nur die Wartezeit bis zum gleichen Fehler.
-      #
-      # Gilt nur für `get`. `stream` kann das nicht übernehmen: dort sind
-      # womöglich schon Chunks beim Aufrufer, ein Retry würde sie doppeln.
-      def with_fresh_retry(agent_name)
-        retried = false
-        begin
-          yield client_for(agent_name)
-        rescue UnknownAgentError
-          raise
-        rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
-          raise UnreachableError.new(agent_name, e.message)
-        rescue => e
-          raise UnreachableError.new(agent_name, e.message) if retried
-          retried = true
-          pool.discard(agent_url(agent_name))
-          retry
-        end
       end
     end
   end
