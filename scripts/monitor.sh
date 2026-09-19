@@ -71,14 +71,78 @@ for target in "${!WATCH[@]}"; do
   if device_up "$ip" "$vantage"; then
     echo "🟢 $label (\`$ip\`) — an" >> "$WATCH_OUT"
     watch_push+=("$target|$label|A3BE8C|check|an")
+    watch_result+=("$target|$label|$ip|up")
   elif [[ "$mode" == "soll-an" ]]; then
     echo "🟠 $label (\`$ip\`) — aus, sollte laufen" >> "$WATCH_OUT"
     watch_push+=("$target|$label|EBCB8B|warn|aus, sollte laufen")
+    watch_result+=("$target|$label|$ip|down")
   else
     echo "⚪ $label (\`$ip\`) — aus" >> "$WATCH_OUT"
     watch_push+=("$target|$label|4C566A||aus")
+    watch_result+=("$target|$label|$ip|down")
   fi
 done
+
+# ── Outage alerts: say it when a watched device STOPS answering ───────────
+# Only the outage. A recovery says nothing: the board tile already shows the
+# present, and the ntfy topic is meant to be read as the log of what broke
+# and when — a stream of "back again" lines would bury that.
+#
+# Debounced, and that is the whole point. The probe is two pings inside one
+# second, which a Wi-Fi device in power save drops often enough. An outage
+# counts as real only after two consecutive failed cycles (10 minutes);
+# without that the topic fills with flapping nobody reads.
+#
+# State: one line per tile in data/watch_state.txt — "id:state:fails".
+# A tile whose previous state is unknown never alerts on the first sighting,
+# or a fresh container would report the whole watch list as newly broken.
+# Which tile alerts on which topic is configured in monitor-watch.conf; a
+# tile that is not listed there is watched on the board only.
+declare -A ALERT 2>/dev/null
+ALERT_STATE="${MONITOR_STATE:-/app/data/watch_state.txt}"
+ALERT_FAILS_REQUIRED=2
+
+alert_ntfy() { # topic title text
+  [[ -n "$NTFY_URL" ]] || return 0
+  curl -s -m 5 -X POST --data-binary "$3" \
+    -H "Title: $2" -H "Tags: warning" -H "Priority: high" \
+    "${NTFY_URL%/}/$1" >/dev/null 2>&1 || true
+}
+
+declare -A ALERT_PREV ALERT_FAILS
+if [[ -f "$ALERT_STATE" ]]; then
+  while IFS=':' read -r sid sstate sfails; do
+    [[ -n "$sid" ]] || continue
+    ALERT_PREV["$sid"]="$sstate"
+    ALERT_FAILS["$sid"]="$sfails"
+  done < "$ALERT_STATE"
+fi
+
+ALERT_TMP="${ALERT_STATE}.tmp"
+: > "$ALERT_TMP"
+for entry in "${watch_result[@]}"; do
+  IFS='|' read -r target label ip result <<< "$entry"
+  prev="${ALERT_PREV[$target]:-unknown}"
+  fails="${ALERT_FAILS[$target]:-0}"
+  if [[ "$result" == "up" ]]; then
+    state="online"
+    fails=0
+  else
+    fails=$((fails + 1))
+    if (( fails >= ALERT_FAILS_REQUIRED )); then
+      state="offline"
+      if [[ "$prev" != "offline" && -n "${ALERT[$target]:-}" ]]; then
+        alert_ntfy "${ALERT[$target]}" "$label ausgefallen" \
+          "$label ($ip) antwortet seit mindestens $((fails * 5)) Minuten nicht. $(date '+%d.%m. %H:%M')"
+      fi
+    else
+      # One miss is not an outage: keep the old verdict, count the failure.
+      state="$prev"
+    fi
+  fi
+  printf '%s:%s:%s\n' "$target" "$state" "$fails" >> "$ALERT_TMP"
+done
+mv "$ALERT_TMP" "$ALERT_STATE"
 
 # ── Sweep: which devices answer in the /24 ───────────────────────────────
 SWEEP_TMP=$(mktemp)
