@@ -26,6 +26,15 @@ module Dylan
       @clients[url] ||= Async::HTTP::Client.new(Async::HTTP::Endpoint.parse(url))
     end
 
+    # Wirft einen einzelnen Client weg (Verbindung schliessen + aus dem Cache).
+    # Für den Fall, dass genau diese Verbindung tot ist, die übrigen aber gesund
+    # sind — `clear!` wäre dafür ein zu grober Hammer.
+    def discard(url)
+      client = @clients.delete(url) or return false
+      client.close rescue nil
+      true
+    end
+
     # Schliesst alle Clients und leert den Pool.
     # Aufrufen wenn sich die URL-Menge ändert (z.B. nach Config-Reload).
     def clear!
