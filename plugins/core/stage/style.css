@@ -234,13 +234,13 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 body.no-sidebar aside,
 body.no-sidebar .menu-toggle { display: none; }
 
-/* Board: eine flache Liste Kacheln, eine Spalte, ab genug Platz zwei. Mehr
-   nicht — das Board ist eine Übersicht, keine Tapete.
+/* Board: Kacheln in Sektionen, eine Spalte, mit wachsendem Platz zwei, dann
+   drei. Mehr nicht — das Board ist eine Übersicht, keine Tapete.
 
    Feste Kachelbreite statt mitwachsender Spalten: eine Kachel ist überall so
    breit wie auf dem iPhone. Das hält die Kachelgestaltung einfach — wer eine
    Kachel baut, kennt ihre Breite — und macht den Zeilenumbruch im Text
-   überall gleich. Das Board ist deshalb auf zwei Kachelbreiten gedeckelt und
+   überall gleich. Das Board ist deshalb auf drei Kachelbreiten gedeckelt und
    nimmt auf einem breiten Schirm bewusst nicht die ganze Fläche.
 
    Multicol statt Grid: der Umbruch verteilt die Kacheln nach Höhe und füllt
@@ -249,9 +249,15 @@ body.no-sidebar .menu-toggle { display: none; }
    vor 10, dieselbe Generation, für die weiter oben `gap` im Flexbox vermieden
    wird.
 
-   Der Breakpoint zählt die Sidebar (220px) und das Panel-Padding mit: erst ab
-   976px hat das Board seine vollen zwei Kachelbreiten. Darunter eine Spalte —
-   lieber Platz rechts frei als zwei zu schmale Kacheln. */
+   Jede Sektion ist ein eigener Multicol-Block (.tile-board), die Überschrift
+   steht davor, nicht darin. `column-span` bräuchte es so nicht, und das kann
+   Firefox erst seit 71 — eine Überschrift im Fluss risse dort die Sektion
+   auseinander.
+
+   Die Breakpoints zählen die Sidebar (220px) und das Panel-Padding mit: erst
+   ab 976px hat das Board seine vollen zwei Kachelbreiten, ab 1335px drei.
+   Darunter jeweils eine Spalte weniger — lieber Platz rechts frei als zu
+   schmale Kacheln. */
 .tile-board {
   --tile-col: 343px;                     /* iPhone 15: 393px minus Panel-Padding */
   --tile-gap: 16px;                      /* waagerecht wie senkrecht derselbe */
@@ -273,12 +279,12 @@ body.no-sidebar .menu-toggle { display: none; }
   .tile-board { max-width: none; }
 }
 
-/* Zwei Spalten, sobald zwei Kacheln nebeneinander Platz haben. Die
-   Fensterbreite taugt dafür nicht: hochkant misst das iPad mini 744 pt und
-   hat ohne Seitenleiste reichlich Platz, mit ihr keine 500. Gefragt ist
-   deshalb das Panel selbst.
+/* Zwei Spalten, sobald zwei Kacheln nebeneinander Platz haben, drei bei
+   dreien. Die Fensterbreite taugt dafür nicht: hochkant misst das iPad mini
+   744 pt und hat ohne Seitenleiste reichlich Platz, mit ihr keine 500.
+   Gefragt ist deshalb das Panel selbst.
 
-   Die Media-Query darüber bleibt als Rückfall für Browser ohne Container
+   Die Media-Queries darüber bleiben als Rückfall für Browser ohne Container
    Queries (Safari vor 16): dort entscheidet weiter die Fensterbreite, mit
    Seitenleiste gerechnet. Wo beide greifen, sagen sie dasselbe. */
 @media (min-width: 976px) {
@@ -287,12 +293,36 @@ body.no-sidebar .menu-toggle { display: none; }
     -webkit-columns: 2; columns: 2;
   }
 }
+@media (min-width: 1335px) {
+  .tile-board {
+    max-width: calc(var(--tile-col) * 3 + var(--tile-gap) * 2);
+    -webkit-columns: 3; columns: 3;
+  }
+}
 @container panel (min-width: 702px) {
   .tile-board {
     max-width: calc(var(--tile-col) * 2 + var(--tile-gap));
     columns: 2;
   }
 }
+@container panel (min-width: 1061px) {
+  .tile-board {
+    max-width: calc(var(--tile-col) * 3 + var(--tile-gap) * 2);
+    columns: 3;
+  }
+}
+
+/* Sektionsüberschrift: gleicher Ton wie die Titel im Link-Grid. Der Abstand
+   hängt am Titel selbst (kein `gap`, siehe .placeholder) — oben zur vorigen
+   Sektion, unten zu den eigenen Kacheln. Erste Sektion ohne Vorlauf. */
+.tile-section {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px;
+  color: var(--n4); margin: 26px 0 8px 2px;
+}
+.tile-group:first-child > .tile-section { margin-top: 0; }
+/* Sektion ohne Titel: derselbe Abstand zur vorigen wie mit. */
+.tile-group + .tile-group > .tile-board:first-child { margin-top: 26px; }
 
 .tile {
   background: var(--n2);

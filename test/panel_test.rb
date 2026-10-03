@@ -76,20 +76,43 @@ class PanelTest < Minitest::Test
 
   # ── Kacheln ──────────────────────────────────────────────────────────────
 
-  # Das Board ist eine flache Liste: die Sektionen aus der YAML ordnen die
-  # Kacheln, erscheinen aber nicht als Überschrift. Nur so bleiben alle
-  # Kacheln gleich breit.
-  def test_board_is_flat_and_keeps_yaml_order
+  # Jede Sektion wird ein eigener Spaltenblock mit ihrem Titel darüber, in
+  # der Reihenfolge der YAML.
+  def test_board_groups_tiles_under_section_titles
     sections = [{ 'title' => 'Läuft',
                   'buttons' => [{ 'id' => 'a', 'type' => 'widget', 'target' => 'a' }] },
                 { 'title' => 'Zustand',
                   'buttons' => [{ 'id' => 'na', 'type' => 'widget', 'target' => 'na' }] }]
     _, _, html = get_widgets(stage(sections), [])
 
-    refute_includes html, 'Läuft'
+    assert_equal 2, html.scan('class="tile-board"').size
+    assert_includes html, '<h3 class="tile-section">Läuft</h3>'
+    assert_operator html.index('Läuft'), :<, html.index('data-target="a"')
+    assert_operator html.index('data-target="a"'), :<, html.index('Zustand')
+    assert_operator html.index('Zustand'), :<, html.index('data-target="na"')
+  end
+
+  # Eine Sektion ohne Kachel (Buttons, leeres discover) hinterlässt keine
+  # verwaiste Überschrift; eine ohne Titel steht ohne Überschrift.
+  def test_board_skips_empty_sections_and_untitled_heads
+    sections = [{ 'title' => 'Aktionen',
+                  'buttons' => [{ 'id' => 'x', 'type' => 'action', 'url' => '/x' }] },
+                { 'buttons' => [{ 'id' => 'a', 'type' => 'widget', 'target' => 'a' }] },
+                { 'title' => 'Sonstiges', 'discover' => true }]
+    _, _, html = get_widgets(stage(sections), [widget('a')])
+
+    refute_includes html, 'Aktionen'
+    refute_includes html, 'Sonstiges'
     refute_includes html, 'tile-section'
     assert_equal 1, html.scan('class="tile-board"').size
-    assert_operator html.index('data-target="a"'), :<, html.index('data-target="na"')
+  end
+
+  def test_section_title_is_escaped
+    sections = [{ 'title' => '<b>x</b>',
+                  'buttons' => [{ 'id' => 'a', 'type' => 'widget', 'target' => 'a' }] }]
+    _, _, html = get_widgets(stage(sections), [])
+
+    assert_includes html, '&lt;b&gt;x&lt;/b&gt;'
   end
 
   # discover-Kacheln hängen an ihrer Sektion, nicht am Ende des Boards —
