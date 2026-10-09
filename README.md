@@ -98,10 +98,10 @@ redirects:
 # config/host-redirects.yaml
 redirects:
   - pattern: 'sync\.lan'
-    target:  'http://192.168.1.73:8384'
+    target:  'http://192.168.1.20:8384'
     type:    proxy      # URL stays; default is a 302 redirect
   - pattern: 'dt\.lan'
-    target:  'http://192.168.1.73:8080'
+    target:  'http://192.168.1.20:8080'
 ```
 
 Yes, this is the use case that a URL shortener also covers. Dylan
@@ -185,6 +185,20 @@ claim comes from elsewhere, 404 for an unknown name. `whoami_also_from` in
 Dylan through another Mac's NAT. Requests to agents still go to their URL
 under `agents`. Without a name, `/whoami` answers by caller address as
 before, for older milan binaries.
+
+`/probe` (`66-probe.rb`) asks every agent for `/ops-book` at the moment it is
+called and lists the answers, one line per agent, plus freshness checks on
+the NAS side. `/ops-book` is a script on the agent: its first line is
+`book ok`, the following lines are facts for the report. An agent that does
+not answer counts as absent, not as a failure; red is an agent that answers
+with anything else.
+
+`/monitor` (`65-monitor.rb`) serves the report that `scripts/monitor.sh`
+writes from cron: a watch list of devices that should be up, and a sweep of
+everything answering on the LAN. The plugin only displays the file.
+
+Both answer with Markdown as `text/plain`, readable in a terminal and in
+Stage's output panel.
 
 ---
 

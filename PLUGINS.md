@@ -366,9 +366,50 @@ stage:
           format: nowrap      # preserves column alignment, horizontal scroll
 ```
 
-**Button types:** `action`, `stream`, `input`, `notes`, `jobs`, `widget`
+**Button types:** `action`, `stream`, `input`, `notes`, `jobs`, `widget`, `panel`
 
 **Icons:** emoji string or `mdi:<name>` (SVG from `plugins/core/stage/icons/`)
+
+### Panels (`type: panel`)
+
+A panel button does not run anything: it switches the main area to a view
+that Dylan renders on the server. `action`, `stream` and `input` stay
+actions with output; a panel is a place.
+
+```yaml
+sections:
+  - title: "Views"
+    buttons:
+      - id: links
+        type: panel
+        panel: links
+        label: "Links"
+        default: true       # the view the page opens with
+
+      - id: board
+        type: panel
+        panel: widget
+        label: "Board"
+        refresh: 3
+
+      - id: cheaters
+        type: panel
+        panel: notes
+        source: cheaters    # a note source of the Milan agent
+```
+
+| `panel` | Shows | `source` |
+|---|---|---|
+| `links` | the link grid | key under `links:` when it is a map of lists (default `default`) |
+| `widget` | the widget tiles of the instance's `agent` | |
+| `jobs` | background jobs across all agents | |
+| `notes` | a note source rendered by Milan | note source id (default: the button `id`) |
+| `bookmarks` | a Pinboard page via Milan, in a frame | list name (default `all`) |
+| `album` | an album page via Milan, in a frame | binder name |
+
+Each panel has its own URL, `/<instance>/panel/<id>` (e.g. `/stage/panel/board`):
+called directly it returns the full page with that panel open, fetched by
+Stage it returns only the fragment.
 
 ### Widget tiles (`type: widget`)
 
