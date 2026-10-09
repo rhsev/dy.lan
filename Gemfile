@@ -11,3 +11,9 @@ ruby '~> 4.0'
 gem 'async', '~> 2.0'
 gem 'async-http', '~> 0.60'
 gem 'protocol-http', '~> 0.25'
+
+# minitest is a bundled gem since Ruby 3.4: under `bundle exec` it only loads
+# when the Gemfile names it. The image skips this group (see Dockerfile).
+group :test do
+  gem 'minitest', '~> 6.0'
+end

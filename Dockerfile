@@ -10,6 +10,7 @@ WORKDIR /app
 # and removing it inside one RUN keeps the toolchain out of the image.
 COPY Gemfile Gemfile.lock* ./
 RUN apk add --no-cache --virtual .build-deps build-base \
+ && bundle config set --local without test \
  && bundle install \
  && apk del .build-deps
 

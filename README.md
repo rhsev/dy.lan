@@ -1,5 +1,7 @@
 # dy.lan
 
+[![test](https://github.com/rhsev/dy.lan/actions/workflows/test.yml/badge.svg)](https://github.com/rhsev/dy.lan/actions/workflows/test.yml)
+
 A URL router for local networks with plugin-based automation
 
 ---

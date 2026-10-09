@@ -24,6 +24,7 @@ GEM
       fiber-annotation
       fiber-local (~> 1.1)
       json
+    drb (2.2.3)
     fiber-annotation (0.2.0)
     fiber-local (1.1.0)
       fiber-storage
@@ -33,6 +34,10 @@ GEM
     io-stream (0.11.1)
     json (2.18.0)
     metrics (0.15.0)
+    minitest (6.0.6)
+      drb (~> 2.0)
+      prism (~> 1.5)
+    prism (1.9.0)
     protocol-hpack (1.5.1)
     protocol-http (0.58.0)
     protocol-http1 (0.36.0)
@@ -45,12 +50,17 @@ GEM
 
 PLATFORMS
   ruby
+  x86_64-linux
   x86_64-linux-musl
 
 DEPENDENCIES
   async (~> 2.0)
   async-http (~> 0.60)
+  minitest (~> 6.0)
   protocol-http (~> 0.25)
 
+RUBY VERSION
+  ruby 4.0.7
+
 BUNDLED WITH
-   2.5.22
+  4.0.20

@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+      # Most plugins have no tests of their own; at least they must parse.
+      - name: Syntax
+        run: for f in server.rb lib/*.rb plugins/*/*.rb; do ruby -c "$f" > /dev/null || exit 1; done
+      # Minitest shuffles the order on every run, so order-dependent tests
+      # show up here instead of on a lucky local run.
+      - name: Tests
+        run: bundle exec ruby -Ilib -Itest -e 'Dir["test/*_test.rb"].sort.each { |f| require "./#{f}" }'
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build -t dylan-ci .
+      - name: Starts and answers
+        run: |
+          docker run -d --name dylan -p 8080:80 dylan-ci
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:8080/dylan > /dev/null && exit 0
+            sleep 1
+          done
+          docker logs dylan
+          exit 1
