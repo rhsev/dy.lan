@@ -143,6 +143,7 @@ Each button is defined in YAML with a type:
 | `notes`  | Cheat-sheet browser (fetched from Milan, split-view) |
 | `jobs`   | Aggregated live job log across all Milan agents |
 | `widget` | Passive state tile, pushed by scripts to a Milan agent |
+| `panel`  | Switches the main area to a view: links, tiles, jobs, notes, bookmarks, album |
 
 ```yaml
 # config/stage.yaml
@@ -168,7 +169,7 @@ multi-step workflows via `MILAN_PROMPT`.
 
 ## Companion: Milan
 
-Dylan pairs with [mi.lan](https://github.com/rhsev/mi.lan), a lightweight script executor running on macOS. Dylan acts as the central router, Milan as the local executor. Together they bridge server-side logic with client-side automation.
+Dylan pairs with [mi.lan](https://github.com/rhsev/mi.lan), a lightweight script executor running on macOS or Linux. Dylan acts as the central router, Milan as the local executor. Together they bridge server-side logic with client-side automation.
 
 ```
 http://mi.lan/mini/mail/abc123  →  Dylan  →  Milan (Mac)  →  script execution
