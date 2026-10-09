@@ -13,6 +13,11 @@ require 'yaml'
 # Performance: Disable reverse DNS lookup (prevents 80-100ms delay per request)
 BasicSocket.do_not_reverse_lookup = true
 
+# Config, templates and plugin sources are UTF-8. Ruby takes the default from
+# LANG, and images without it (e.g. wolfi-base) fall back to US-ASCII — the
+# Stage page and /dylan/routes then fail on the first non-ASCII byte.
+Encoding.default_external = Encoding::UTF_8
+
 # Load Dylan Core
 require_relative 'lib/plugin'
 require_relative 'lib/router'
