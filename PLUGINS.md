@@ -117,7 +117,7 @@ plugins/
 │   ├── 55-stage.rb          # StageBase + ManageStage instance
 │   ├── 90-maintenance.rb
 │   ├── 91-manage.rb         # Stage instance at /manage
-│   └── 95-whoami.rb
+│   └── 95-whoami.rb         # milan identity check (?name=, whoami_also_from)
 ├── extra/     # public, ships with Dylan (demos, anonymized variants)
 │   ├── 10-checkip.rb
 │   ├── 30-pattern-redirect.rb
@@ -736,7 +736,7 @@ dylan/
 │
 ├── config/
 │   ├── crontab                     # Cron schedule (container-side)
-│   ├── milan.yaml                  # Milan agent registry
+│   ├── milan.yaml                  # Milan agent registry (+ whoami_also_from)
 │   └── redirects.yaml              # Simple redirects
 │
 ├── scripts/

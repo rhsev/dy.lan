@@ -173,6 +173,14 @@ http://mi.lan/mini/mail/abc123  →  Dylan  →  Milan (Mac)  →  script execut
 Milan agents are declared in `config/milan.yaml`. Stage shows agent
 health as live badges and aggregates job logs across all of them.
 
+On start, an agent confirms its name at `/whoami?name=<agent>`
+(`95-whoami.rb`): 200 when the caller's address is the agent's, 409 when the
+claim comes from elsewhere, 404 for an unknown name. `whoami_also_from` in
+`milan.yaml` lists extra caller addresses per agent, for a Mac that reaches
+Dylan through another Mac's NAT. Requests to agents still go to their URL
+under `agents`. Without a name, `/whoami` answers by caller address as
+before, for older milan binaries.
+
 ---
 
 ## Project Structure
