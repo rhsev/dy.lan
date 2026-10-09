@@ -23,6 +23,16 @@ Dylan::Milan.singleton_class.prepend(AgentsStub)
 WhoamiAddress = Struct.new(:ip_address)
 WhoamiRequest = Struct.new(:remote_address)
 
+# milan.yaml section from the test instead of the file.
+class TestWhoami < WhoamiPlugin
+  def initialize(config)
+    super()
+    @test_config = config
+  end
+
+  def config = @test_config
+end
+
 class WhoamiTest < Minitest::Test
   MINI = '192.168.1.118'
   BOOK = '192.168.1.187'
@@ -36,8 +46,8 @@ class WhoamiTest < Minitest::Test
   end
 
   # Returns [status, body].
-  def whoami(path, from:)
-    response = WhoamiPlugin.new.call('dy.lan', path, WhoamiRequest.new(WhoamiAddress.new(from)))
+  def whoami(path, from:, config: {})
+    response = TestWhoami.new(config).call('dy.lan', path, WhoamiRequest.new(WhoamiAddress.new(from)))
     body = +''
     while (chunk = response.body&.read)
       body << chunk
@@ -61,6 +71,28 @@ class WhoamiTest < Minitest::Test
   def test_name_called_from_another_agents_address
     assert_equal [409, "book is registered at #{BOOK} but called from #{MINI} (registered as mini)"],
                  whoami('/whoami?name=book', from: MINI)
+  end
+
+  # The MacBook on the cable again, now with the mini's address listed for it:
+  # it may start as book, wherever the WLAN switch happens to be.
+  def test_name_called_from_an_also_from_address
+    cable = { 'whoami_also_from' => { 'book' => [MINI] } }
+    assert_equal [200, "book (#{MINI})"], whoami('/whoami?name=book', from: MINI, config: cable)
+    assert_equal [200, "book (#{BOOK})"], whoami('/whoami?name=book', from: BOOK, config: cable)
+  end
+
+  # The list is per agent: it widens book's claim and nobody else's.
+  def test_also_from_is_per_agent
+    cable = { 'whoami_also_from' => { 'book' => [MINI] } }
+    assert_equal [409, "mini is registered at #{MINI} but called from #{BOOK} (registered as book)"],
+                 whoami('/whoami?name=mini', from: BOOK, config: cable)
+    assert_equal [409, "book is registered at #{BOOK} but called from 192.168.1.50"],
+                 whoami('/whoami?name=book', from: '192.168.1.50', config: cable)
+  end
+
+  # A milan.yaml without the key, or none at all, changes nothing.
+  def test_missing_config_keeps_the_strict_check
+    assert_equal 409, whoami('/whoami?name=book', from: MINI, config: nil).first
   end
 
   def test_name_called_from_unregistered_address

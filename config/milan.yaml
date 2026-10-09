@@ -12,6 +12,12 @@ milan:
     mini: "http://192.168.1.10:8080"   # Mac Mini
     book: "http://192.168.1.11:8080"   # MacBook
 
+  # Extra caller addresses /whoami accepts for an agent's claim. A MacBook
+  # bridged over the mini's Thunderbolt link reaches Dylan through the mini's
+  # NAT, i.e. with the mini's address. Actions still go to the URL above.
+  # whoami_also_from:
+  #   book: ["192.168.1.10"]
+
   # Tailscale example:
   # agents:
   #   mini: "http://100.64.1.10:8080"

@@ -10,6 +10,13 @@ require 'uri'
 #   book, bridged over the mini and NATed to .118 → GET http://dy.lan/whoami?name=book
 #     → 409 "book is registered at 192.168.1.187 but called from 192.168.1.118 (registered as mini)"
 #
+# A claim may also come from an address listed under whoami_also_from in
+# milan.yaml — for the MacBook on the cable, which reaches Dylan as .118:
+#   whoami_also_from:
+#     book: ["192.168.1.118"]
+# Such an OK says who the caller is, not that Dylan can reach it: actions
+# still go to the address under agents.
+#
 # Without a name the agent is looked up by caller address alone, as before —
 # kept for milan binaries that predate ?name=. Behind NAT that answer names
 # the router's agent instead of the caller, which is why milan now sends one.
@@ -22,6 +29,8 @@ class WhoamiPlugin < Dylan::Plugin
   # The router matches against the full request path, query included.
   pattern(%r{^/whoami(\?|$)})
   timeout(1)
+  config_file 'milan.yaml'
+  config_section 'milan'
 
   def match?(host, path)
     return false unless WHOAMI_DOMAINS.any? { |d| host.include?(d) }
@@ -44,7 +53,9 @@ class WhoamiPlugin < Dylan::Plugin
     return Dylan::Response.error(404, "Unknown agent: #{name}") unless url
 
     registered_ip = host_of(url)
-    return Dylan::Response.text("#{name} (#{caller_ip})") if registered_ip == caller_ip
+    if registered_ip == caller_ip || also_from(name).include?(caller_ip)
+      return Dylan::Response.text("#{name} (#{caller_ip})")
+    end
 
     message = +"#{name} is registered at #{registered_ip} but called from #{caller_ip}"
     other = agent_at(caller_ip)
@@ -61,6 +72,10 @@ class WhoamiPlugin < Dylan::Plugin
     else
       Dylan::Response.error(404, "Unknown caller: #{caller_ip}")
     end
+  end
+
+  def also_from(name)
+    Array((config || {}).dig('whoami_also_from', name)).map(&:to_s)
   end
 
   def agent_at(ip)
