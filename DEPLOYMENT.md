@@ -12,7 +12,7 @@ docker compose up -d
 
 Access the dashboard at `http://localhost:8080/dylan`
 
-After the first build, updates only require a restart — no rebuild:
+After the first build, updates only require a restart, no rebuild:
 
 ```bash
 git pull
@@ -51,7 +51,7 @@ redirects:
     description: 'YouTube search'
 ```
 
-Redirects are hot-reloaded — no restart needed.
+Redirects are hot-reloaded, so no restart is needed.
 
 With `domains:` set, a request for any other host falls through to the next
 plugin: `curl http://localhost:8080/g/ruby` is a 404 while
@@ -97,7 +97,7 @@ Server running on port 80
 - **Container won't start**: Check logs, verify no IP conflicts (macvlan) or port conflicts (bridge)
 - **Can't access from network**: With bridge networking use `localhost:8080`. With macvlan ping the assigned IP.
 - **Plugin not loading**: Check logs for `FAILED to load`. Fix the plugin and `/reload`.
-- **A route answers 500, 503 or 504**: the plugin that owns the path failed — 500 is an exception, 504 its timeout, 503 the circuit breaker (below). The log has the error and its location (`docker logs dylan | grep "ERROR in"`).
+- **A route answers 500, 503 or 504**: the plugin that owns the path failed: 500 is an exception, 504 its timeout, 503 the circuit breaker (below). The log has the error and its location (`docker logs dylan | grep "ERROR in"`).
 
 ### Circuit Breaker
 

@@ -5,7 +5,7 @@ A URL router for local networks with plugin-based automation
 ---
 ## What is Dylan?
 
-Designed for local networks. Dylan matches the URL pattern and lets a plugin decide what happens -  whether that's a redirect to an app-specific deep link, a search, a call to a script on a remote Mac via [Milan](https://github.com/rhsev/mi.lan). 
+Designed for local networks. Dylan matches the URL pattern and lets a plugin decide what happens: a redirect to an app-specific deep link, a search, a call to a script on a remote Mac via [Milan](https://github.com/rhsev/mi.lan). 
 
 Or call an action in the web interface of your phone. The Dylan server calls a script on your Mac. The terminal output streams live back to the browser on your phone. No SSH client, no login prompt, no per-request authentication. 
 
@@ -16,19 +16,19 @@ Dylan turns local network URLs into workflows.
 ## Three small examples
 
 **Open a note in DEVONthink**  
-`http://dy.lan/mini/dt/a1b2c3d4` - Dylan hands the 8-character alias to
+`http://dy.lan/mini/dt/a1b2c3d4`: Dylan hands the 8-character alias to
 the `dt` script on the Mac via the companion app Milan; it resolves the alias via AppleScript, DEVONthink opens the document. 
 
 **Sync configs and install them**  
 [grubber-twin](https://github.com/rhsev/grubber-twin) keeps Markdown-based configs in sync between two Macs.
 `http://dy.lan/mini/install/foo` matches a pattern, Milan runs the install
-script on the remote Mac - no need to authenticate.
+script on the remote Mac without a login.
 
 **Interactive scripts with input**  
 `http://dy.lan/mini/stream/greet` opens a stream button in Stage. The
 script emits a `MILAN_PROMPT` line; Stage renders it as a text input.
 You type a name, `hello.rb` runs on the Mac, the notification pops up
-there. Multi-step workflows without a web framework.
+there.
 
 ![Stage in action](docs/counter.gif)
 
@@ -39,19 +39,19 @@ there. Multi-step workflows without a web framework.
 ## Why Dylan?
 
 **Workflow Shortcuts**  
-Turn URLs into actions with pattern-based routing. Search notes, trigger shortcuts, or open specific documents via memorable URLs. Pattern → plugin → whatever you want.
+Turn URLs into actions with pattern-based routing. Search notes, trigger shortcuts, or open specific documents via memorable URLs.
 
 **Extensible by Design**  
 YAML configs for simple redirects. Ruby plugins for custom logic. Reusable libs for the heavy lifting (Milan client, HTTP-connection pool, static-asset serving with ETag). Add new workflows without touching the core. See [PLUGINS.md](PLUGINS.md) for the plugin guide.
 
-**LAN by design**  
-No TLS overhead, no auth layer, no cloud dependency. If you want access
+**Made for the LAN only**  
+Plain HTTP inside the LAN, without authentication or a cloud service. If you want access
 from the road, put Tailscale or a similar zero-trust network in front. No third party gets remote-control rights to your Mac.
 
 **Lean, modern Ruby**  
 Ruby 4 with async/Fiber, ~3,000 lines of Ruby, ~35 MB RAM in steady state.
-No database, no build step, no framework used. Stage - a template plugin for browser
-UI - is ~450 lines of JS. 
+It needs no database, build step or framework. Stage, the template plugin for
+the browser UI, is ~450 lines of JS.
 
 ---
 
@@ -67,7 +67,7 @@ docker compose up -d
 
 Dashboard: `http://localhost:8080/dylan`
 
-After the first build, code changes only need a restart - `git pull &&
+After the first build, code changes only need a restart: `git pull &&
 docker restart dylan` (or a call to `/reload`) picks up everything. Only
 `Gemfile` changes require a new image build.
 
@@ -104,10 +104,6 @@ redirects:
     target:  'http://192.168.1.20:8080'
 ```
 
-Yes, this is the use case that a URL shortener also covers. Dylan
-does it because it's trivial once you have pattern matching - not because
-it's the point.
-
 **Ruby plugin**
 ```ruby
 class NotesPlugin < Dylan::Plugin
@@ -126,7 +122,7 @@ See [PLUGINS.md](PLUGINS.md) for the full plugin API.
 
 ---
 
-## Stage - the front end
+## Stage, the front end
 
 Stage is an automation UI. It's itself a Dylan plugin (`plugins/core/55-stage.rb`). You can start scripts on the server, trigger actions on the Mac, you get the live terminal stream of an action.
 
@@ -138,7 +134,7 @@ Each button is defined in YAML with a type:
 | Type     | What it does |
 |----------|-------------|
 | `action` | HTTP call, result shown in the output panel |
-| `stream` | SSE stream from Milan - live terminal output in the browser |
+| `stream` | SSE stream from Milan, live terminal output in the browser |
 | `input`  | Text input → forwarded as a parameter |
 | `notes`  | Cheat-sheet browser (fetched from Milan, split-view) |
 | `jobs`   | Aggregated live job log across all Milan agents |
@@ -160,7 +156,7 @@ stage:
           url: "/mini/stream/greet"
 ```
 
-Multi-instance via `StageBase` - the `/manage` dashboard is itself a Stage.
+Multi-instance via `StageBase`: the `/manage` dashboard is itself a Stage.
 Private instances live in `plugins/custom/`. Self-hosted Monaspace font
 (OFL), MDI icon support, mobile drawer layout, agent health badges,
 multi-step workflows via `MILAN_PROMPT`.
@@ -169,7 +165,7 @@ multi-step workflows via `MILAN_PROMPT`.
 
 ## Companion: Milan
 
-Dylan pairs with [mi.lan](https://github.com/rhsev/mi.lan), a lightweight script executor running on macOS or Linux. Dylan acts as the central router, Milan as the local executor. Together they bridge server-side logic with client-side automation.
+Dylan pairs with [mi.lan](https://github.com/rhsev/mi.lan), a lightweight script executor running on macOS or Linux. Dylan acts as the central router, Milan as the local executor.
 
 ```
 http://mi.lan/mini/mail/abc123  →  Dylan  →  Milan (Mac)  →  script execution
@@ -222,7 +218,7 @@ lib/
 ```
 
 Plugins are loaded by scanning `plugins/` recursively and sorting by
-basename - the numeric prefix controls priority across all three folders.
+basename, so the numeric prefix controls priority across all three folders.
 First match wins.
 
 ---
@@ -231,14 +227,14 @@ First match wins.
 
 **Runtime**  
 Ruby 4 with [async](https://github.com/socketry/async) +
-[async-http](https://github.com/socketry/async-http). No Puma, no Falcon -
-`async-http` serves requests directly. No database. The entire `Gemfile`
-is three lines: `async`, `async-http`, `protocol-http`. Everything else
+[async-http](https://github.com/socketry/async-http). `async-http` serves
+requests directly, without Puma or Falcon, and there is no database. The
+entire `Gemfile` is three lines: `async`, `async-http`, `protocol-http`. Everything else
 is stdlib.
 
 **Memory (~35 MB)**  
-Ruby heap (~15 MB base) + ~3,000 LOC of application code + the cached
-font file. That's it.
+Ruby heap (~15 MB), about 3,000 lines of application code, and the cached
+font file.
 
 **Performance**  
 A few milliseconds per request on the LAN. 2,000+ req/s on a Synology
@@ -252,8 +248,8 @@ Docker restarts the container within seconds.
 
 **Streaming**  
 SSE responses proxy live output from Milan agents straight to the browser.
-The stream body closes cleanly on client disconnect to prevent leaks -
-even mid-stream.
+The stream body closes cleanly when the client disconnects, also in the
+middle of a stream, so nothing leaks.
 
 ---
 
@@ -293,4 +289,4 @@ Built by Ralf Hülsmann ([GitHub](https://github.com/rhsev)), inspired by Brett 
 
 ---
 
-*Part of a family of plain-text tools — the [profile page](https://github.com/rhsev) has the map.*
+*Part of a family of plain-text tools. See the [profile page](https://github.com/rhsev) for an overview.*

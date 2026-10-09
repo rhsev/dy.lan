@@ -1,4 +1,4 @@
-# Dylan — Writing Plugins
+# Dylan: Writing Plugins
 
 Complete guide for developing, testing, and extending Dylan via plugins.
 
@@ -10,7 +10,7 @@ Complete guide for developing, testing, and extending Dylan via plugins.
 2. [Plugin Folder Structure](#plugin-folder-structure)
 3. [Built-in Libraries](#built-in-libraries)
 4. [Plugin Configuration (DSL)](#plugin-configuration-dsl)
-5. [Stage — Multi-Instance UI Plugin](#multi-instance-plugins-stagebase-pattern)
+5. [Stage: Multi-Instance UI Plugin](#multi-instance-plugins-stagebase-pattern)
 6. [Development Environment](#development-environment)
 7. [Testing Plugins](#testing-plugins)
 8. [Debugging](#debugging)
@@ -70,7 +70,7 @@ class SlowAPIPlugin < Dylan::Plugin
   timeout(3.0)  # Allow up to 3 seconds (default is 500ms)
 
   def call(host, path, request)
-    # Make external API call — plain sleep/IO yields to other requests
+    # Make external API call; plain sleep/IO yields to other requests
     # (fiber scheduler), so this stands in for a slow backend
     sleep(2)
 
@@ -123,7 +123,7 @@ plugins/
 │   ├── 90-maintenance.rb
 │   ├── 91-manage.rb         # Stage instance at /manage
 │   ├── 95-whoami.rb         # milan identity check (?name=, whoami_also_from)
-│   └── 96-reload.rb         # /reload — restart the server process
+│   └── 96-reload.rb         # /reload: restart the server process
 ├── extra/     # public, ships with Dylan (demos, anonymized variants)
 │   ├── 10-checkip.rb.disabled
 │   ├── 30-pattern-redirect.rb.disabled
@@ -131,47 +131,33 @@ plugins/
 │   ├── 65-monitor.rb
 │   ├── 66-probe.rb
 │   └── 99-chaos-test.rb.disabled   # rename to enable (see Testing)
-├── custom/    # your private plugins — gitignored, deployed everywhere
+├── custom/    # your private plugins: gitignored, deployed everywhere
 │   └── 56-my-stage.rb       # example: private Stage instance
-└── local/     # belongs to ONE deployment — never travels, usually empty
+└── local/     # belongs to ONE deployment: never travels, usually empty
 ```
 
 **Where should your plugin go?**
 
-- **`core/`** — only for plugins that are essential to Dylan's URL-routing
+- **`core/`**: only for plugins that are essential to Dylan's URL-routing
   feature set (proxy, redirects, dashboard). Rarely the right place for
   user-written plugins.
-- **`extra/`** — public examples, generic helpers, anything you'd be happy
+- **`extra/`**: public examples, generic helpers, anything you'd be happy
   to publish on GitHub.
-- **`custom/`** — anything that contains inline secrets, personal config,
+- **`custom/`**: anything that contains inline secrets, personal config,
   or domain-specific behavior. Gitignored by default. **This is where a
   private plugin belongs**; it is still written at the source and deployed
   to every installation.
-- **`local/`** — for a plugin you write **on the running installation**
+- **`local/`**: for a plugin you write **on the running installation**
   rather than at the source. Normally empty, and normally the wrong answer:
   work at the source and let it deploy.
 
-`local/` exists because deployment is one-directional. A sync runs source →
-target and compares what the source knows; a file born on the target is not
-"newer", it is simply unknown. Under a job that prunes what the source does
-not have (with twin: `Delete: true`) the next sync therefore removes it,
-without asking, because from the tool's side there is nothing to ask about.
-A careful tool keeps a copy — twin runs rsync with `--backup-dir`, and rsync
-renames rather than unlinks "each file to be deleted or overwritten" — so the
-plugin is recoverable afterwards. It is still gone from the load path, and
-nothing said so. So if you do edit where Dylan runs — quick fix in place, a
-route only this installation needs, something you cannot try out anywhere
-else — put it in `local/` and tell the deploying tool to keep its hands off
-(with twin: `Own: local` on the `plugins` job, which protects it from
-overwrite **and** from `--delete`).
-
-It is a deployment boundary, not a privacy one, and the two are easy to
-confuse. `custom/` already keeps a plugin out of the public repo, and that is
-usually all that is wanted — a plugin that merely holds secrets belongs
-there, written at the source and deployed like everything else. The same
-boundary is what lets two installations differ on purpose, but that is the
-rarer case; the everyday one is simply: this file was made here, so it stays
-here.
+A sync only knows what the source has, so a deployment that mirrors
+deletions (with twin: `Delete: true`) removes a plugin that was created on
+the target, without asking. If you do edit where Dylan runs, put the file in
+`local/` and exclude that folder from the sync (with twin: `Own: local` on
+the `plugins` job, which protects it from overwrite and from `--delete`).
+For a plugin that only holds secrets, `custom/` is enough: write it at the
+source and deploy it like everything else.
 
 **Convention**: If a plugin has its config in YAML (e.g. `redirects.yaml`),
 it can stay generic in `extra/`. If a plugin hardcodes domain-specific
@@ -235,7 +221,7 @@ end
 
 `Dylan::StaticAssets` handles browser-side ETag caching (`304 Not Modified`
 when unchanged) and a server-side memory cache that invalidates on file
-mtime change — edits to `style.css`/`app.js` are visible on the next browser
+mtime change, so edits to `style.css`/`app.js` are visible on the next browser
 request without a container restart.
 
 See `plugins/core/90-maintenance.rb` and `plugins/extra/65-monitor.rb` for
@@ -246,7 +232,7 @@ working examples in the codebase.
 ## Plugin Configuration (DSL)
 
 For plugins that read config from a YAML file in `config/`, use the
-built-in `config_file` DSL — it provides hot-reload with throttled mtime
+built-in `config_file` DSL. It provides hot-reload with throttled mtime
 checks and an optional `on_config_reload` callback.
 
 ```ruby
@@ -283,15 +269,15 @@ end
 
 **Other class-level DSLs:**
 
-- `abstract` — marks this class as a non-routing base. Used when several
+- `abstract`: marks this class as a non-routing base. Used when several
   concrete plugins share a base class (see Stage below).
-- `pattern(regex)` — URL match. Set once per concrete class.
-- `timeout(seconds)` — per-plugin request timeout (default 0.5s).
+- `pattern(regex)`: URL match. Set once per concrete class.
+- `timeout(seconds)`: per-plugin request timeout (default 0.5s).
 
 ### Multi-Instance Plugins (StageBase pattern)
 
-When the same logic should run at multiple URL prefixes — each with its own
-config file — define an abstract base class and small concrete subclasses:
+When the same logic should run at multiple URL prefixes, each with its own
+config file, define an abstract base class and small concrete subclasses:
 
 ```ruby
 # plugins/core/55-stage.rb
@@ -415,7 +401,7 @@ Stage it returns only the fragment.
 
 A widget entry is not a button: it is a passive state tile. Scripts push their
 state to a Milan agent's widget inbox (`POST /widget/<target>`), and the
-instance shows all targets as a grid — one `GET /<agent>/widgets` per refresh,
+instance shows all targets as a grid, with one `GET /<agent>/widgets` per refresh,
 no matter how many tiles. An instance that has tiles renders them as its home
 view and polls; the sidebar keeps only the real buttons.
 
@@ -446,7 +432,7 @@ board:
   when it expires (something that should be running is not); without one it
   is a slow state and just shows the clock time of the last push.
 - The reply carries an **ETag** over the tile states, so the usual answer to a
-  poll is `304` — no render, no transfer. Expiry is part of the digest.
+  poll is `304`: no render, no transfer. Expiry is part of the digest.
 - **`doc`** adds a small ⓘ next to the clock, linking to whatever explains the
   tile. It is read from the YAML and never from the push: a tile shows a state,
   and where that state is explained is a property of the display. Taken from
@@ -462,7 +448,7 @@ That sets a floor of **Safari 10.1 / iOS 10.3**, verified on an iPad mini 2.
 it from creeping upwards.
 
 **No syntax newer than ES2017 in `app.js`.** Optional chaining and `??` are
-*parse* errors on older engines, so one of them discards the entire file —
+*parse* errors on older engines, so one of them discards the entire file,
 not just its own line. The symptom is not a blank page but a rendered shell
 with empty panels, because Dylan renders the frame server-side and only the
 panel content comes from the script. Check before committing:
@@ -473,7 +459,7 @@ npx acorn --ecma2017 --silent plugins/core/stage/app.js
 
 **No `gap` in flex containers.** Safari before 14.1 supports it in grid only,
 so flex children sit flush. Grid `gap` is fine and is used in `.link-grid` and
-`.tile-grid`. `@supports (gap: 1px)` does not help — it answers yes for the
+`.tile-grid`. `@supports (gap: 1px)` does not help: it answers yes for the
 grid support and cannot tell the two apart.
 
 When spacing a flex container, mind who owns the margin:
@@ -482,8 +468,8 @@ When spacing a flex container, mind who owns the margin:
   child that sets the same margin itself. Check the children first.
 - Where a child has its own margin, give it the spacing instead of the
   container. `.link-grid-title` holds both its distances for that reason.
-- Where the first child can be `display: none` — as `header`'s burger is above
-  700px — a sibling selector invents a margin in front of the second one.
+- Where the first child can be `display: none` (as `header`'s burger is above
+  700px), a sibling selector invents a margin in front of the second one.
   `header` keeps `gap` and simply loses its spacing on old Safari.
 - `.output-label` starts with a text node, so it needs `> *`, not `> * + *`.
 
@@ -597,11 +583,11 @@ pattern(%r{^/g/(.+)$})
 # Match /user/123/profile
 pattern(%r{^/user/(\d+)/profile$})
 
-# Match /search with or without query params — Dylan's path includes the
+# Match /search with or without query params. Dylan's path includes the
 # query string, so ^/search$ would miss /search?q=ruby
 pattern(%r{^/search(\?|$)})
 
-# Match host (for multi-tenant setups) — match? tries host, then path
+# Match host (for multi-tenant setups): match? tries host, then path
 pattern(%r{^api\.example\.com$})
 ```
 
@@ -773,7 +759,7 @@ dy.lan/
 │   │   ├── 90-maintenance.rb       # Dashboard, /dylan/*
 │   │   ├── 91-manage.rb            # Stage instance at /manage
 │   │   ├── 95-whoami.rb            # Milan identity check
-│   │   ├── 96-reload.rb            # /reload — restart the server process
+│   │   ├── 96-reload.rb            # /reload: restart the server process
 │   │   └── stage/                  # Stage frontend assets
 │   │       ├── index.html
 │   │       ├── app.js
@@ -832,8 +818,8 @@ docker exec -it dylan /bin/sh
 
 ### Unit tests
 
-Logic that does not need a running server is tested with minitest — no
-server, no container, but the gems from the `Gemfile` (`bundle install`):
+Logic that does not need a running server is tested with minitest. That
+needs no server or container, only the gems from the `Gemfile` (`bundle install`):
 
 ```bash
 ruby test/ansi_test.rb          # ANSI → HTML renderer
@@ -854,7 +840,7 @@ docker compose run --rm --no-deps -v "$PWD/test:/app/test:ro" dylan \
 ### Manual Testing
 
 ```bash
-# Test redirects — redirects.yaml only answers for its `domains:`
+# Test redirects: redirects.yaml only answers for its `domains:`
 curl -I -H 'Host: dy.lan' http://localhost:8080/g/ruby
 # Expected: 302 redirect to Google
 
@@ -884,7 +870,7 @@ http://localhost:8080/dylan/routes
 http://localhost:8080/dylan/stats
 ```
 
-Touching `plugins/core/stage/` also means staying inside the browser floor —
+Touching `plugins/core/stage/` also means staying inside the browser floor:
 see [Frontend rules](#frontend-rules-pluginscorestage).
 
 ### Performance Testing
@@ -913,7 +899,7 @@ Test error handling with the chaos plugin:
 mv plugins/extra/99-chaos-test.rb.disabled plugins/extra/99-chaos-test.rb
 docker restart dylan
 
-# Trigger errors to test circuit breaker — each answers 500
+# Trigger errors to test circuit breaker; each answers 500
 for i in {1..5}; do curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/chaos/error; done
 
 # Now disabled for 5 minutes: 503
@@ -1074,7 +1060,7 @@ end
 3. **Waiting is fine, computing is not**: Ruby 4 runs Dylan under a fiber
    scheduler, so `sleep`, socket and HTTP I/O yield to other requests. What
    blocks everyone is CPU work and C extensions that bypass the scheduler.
-   (`Async::Task#sleep` is deprecated — plain `sleep` does the same.)
+   (`Async::Task#sleep` is deprecated; plain `sleep` does the same.)
 
 ```ruby
 # BAD: CPU-bound loop (no other request is served meanwhile)
@@ -1083,7 +1069,7 @@ def call(host, path, request)
   Dylan::Response.text(total.to_s)
 end
 
-# FINE: waiting yields (other requests continue — see /dylan/slow)
+# FINE: waiting yields (other requests continue, see /dylan/slow)
 def call(host, path, request)
   sleep 2
   Dylan::Response.text("Done")
@@ -1134,7 +1120,7 @@ Use async-http for non-blocking API calls:
 require 'async/http/internet'
 
 # Note: prefer Dylan::HttpPool over Async::HTTP::Internet for requests to the
-# same host — the pool reuses connections across requests instead of opening
+# same host: the pool reuses connections across requests instead of opening
 # a new one each time. Async::HTTP::Internet is fine for one-off calls to
 # varying external hosts.
 class AsyncAPIPlugin < Dylan::Plugin
@@ -1321,7 +1307,5 @@ end
 
 ## Version
 
-**Dylan 1.1** - Widget tiles for the Stage, ANSI rendering, Ruby 4 declared as
-a requirement rather than assumed
-
-**Dylan 1.0** - First release of Ruby 4.0 async HTTP router
+What changed in each version is in the
+[release notes](https://github.com/rhsev/dy.lan/releases).
