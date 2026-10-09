@@ -45,6 +45,13 @@ class StreamFrameTest < Minitest::Test
     Dylan::Milan.stub_body  = '<div class="album"></div>'
   end
 
+  # The stub stays prepended for the whole process, so other test files in the
+  # same run see it too. Leave no delay or error behind for them.
+  def teardown
+    Dylan::Milan.stub_delay = nil
+    Dylan::Milan.stub_error = nil
+  end
+
   # Ruft die Route so auf, wie der Router es tut: call unter Timeout, Body erst
   # danach lesen. Liefert [antwort_kam, body].
   def through_router(path)
