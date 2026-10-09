@@ -6,14 +6,14 @@ require 'uri'
 #
 # With ?name= the agent states its name and Dylan checks the claim against the
 # address the request came from:
-#   milan (192.168.1.118) → GET http://dy.lan/whoami?name=mini → 200 "mini (192.168.1.118)"
-#   book, bridged over the mini and NATed to .118 → GET http://dy.lan/whoami?name=book
-#     → 409 "book is registered at 192.168.1.187 but called from 192.168.1.118 (registered as mini)"
+#   milan (192.168.1.10) → GET http://dy.lan/whoami?name=mini → 200 "mini (192.168.1.10)"
+#   book, bridged over the mini and NATed to .10 → GET http://dy.lan/whoami?name=book
+#     → 409 "book is registered at 192.168.1.11 but called from 192.168.1.10 (registered as mini)"
 #
 # A claim may also come from an address listed under whoami_also_from in
-# milan.yaml — for the MacBook on the cable, which reaches Dylan as .118:
+# milan.yaml — for the MacBook on the cable, which reaches Dylan as .10:
 #   whoami_also_from:
-#     book: ["192.168.1.118"]
+#     book: ["192.168.1.10"]
 # Such an OK says who the caller is, not that Dylan can reach it: actions
 # still go to the address under agents.
 #

@@ -34,8 +34,8 @@ class TestWhoami < WhoamiPlugin
 end
 
 class WhoamiTest < Minitest::Test
-  MINI = '192.168.1.118'
-  BOOK = '192.168.1.187'
+  MINI = '192.168.1.10'
+  BOOK = '192.168.1.11'
 
   def setup
     Dylan::Milan.stub_agents = { 'mini' => "http://#{MINI}:8080", 'book' => "http://#{BOOK}:8080" }
