@@ -45,6 +45,7 @@ module Dylan
     # @return [Async::HTTP::Protocol::Response]
     def call(host, path, request)
       @stats[:total_requests] += 1
+      failure = nil  # [status, message] des ersten passenden Plugins, das gescheitert ist
 
       # Ruby 4.0: Nutze 'it' Parameter für kompakteren Code
       @plugins.each do |plugin|
@@ -52,7 +53,12 @@ module Dylan
 
         # Circuit breaker: Skip disabled plugins (Auto-Re-Enable nach Cooldown)
         if @disabled_plugins.include?(plugin_name)
-          next if Time.now < @disabled_until.fetch(plugin_name, Time.now)
+          if Time.now < @disabled_until.fetch(plugin_name, Time.now)
+            if (plugin.match?(host, path) rescue false)
+              failure ||= [503, "#{plugin_name} temporarily disabled after repeated errors"]
+            end
+            next
+          end
           @disabled_plugins.delete(plugin_name)
           @disabled_until.delete(plugin_name)
           @error_times[plugin_name].clear
@@ -75,12 +81,19 @@ module Dylan
           end
         rescue Async::TimeoutError
           handle_plugin_error(plugin_name, "TIMEOUT (>#{plugin_timeout}s)", path)
+          failure ||= [504, "#{plugin_name} timed out"]
           next # Try next plugin
         rescue => e
           handle_plugin_error(plugin_name, e.message, path, e.backtrace&.first)
+          failure ||= [500, "#{plugin_name} failed"]
           next # Continue to next plugin despite error
         end
       end
+
+      # Ein passendes Plugin ist gescheitert und kein späteres hat geantwortet:
+      # das sagen statt 404, sonst sieht ein kaputtes Plugin aus wie eine
+      # fehlende Route.
+      return Response.error(*failure) if failure
 
       # 404 Fallback
       Response.not_found
