@@ -107,7 +107,7 @@ A plugin with 5 errors within 60 s is disabled for 5 minutes and re-enabled auto
 
 - ~35 MB RAM (resident, steady state)
 - A few milliseconds per request on the LAN
-- 2,000+ req/s on a Synology DS224+, 20,000+ req/s on a Mac mini M4
+- 2,000+ req/s on a Synology DS224+, 15,000+ req/s on a Mac mini M4
 
 ```bash
 # Latency, async concurrency and a short load run, with expected statuses

@@ -227,7 +227,7 @@ font file. That's it.
 
 **Performance**  
 A few milliseconds per request on the LAN. 2,000+ req/s on a Synology
-DS224+, 20,000+ req/s on a Mac mini M4.
+DS224+, 15,000+ req/s on a Mac mini M4.
 
 **Hot-reload**  
 YAML configs are mtime-checked per request, throttled to 5 s intervals.
