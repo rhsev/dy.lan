@@ -16,8 +16,8 @@ Dylan turns local network URLs into workflows.
 ## Three small examples
 
 **Open a note in DEVONthink**  
-`http://dy.lan/dt/a1b2c3d4` - the pattern captures an 8-character alias,
-the Mac companion app Milan resolves it via AppleScript, DEVONthink opens the document. 
+`http://dy.lan/mini/dt/a1b2c3d4` - Dylan hands the 8-character alias to
+the `dt` script on the Mac via the companion app Milan; it resolves the alias via AppleScript, DEVONthink opens the document. 
 
 **Sync configs and install them**  
 [grubber-twin](https://github.com/rhsev/grubber-twin) keeps Markdown-based configs in sync between two Macs.
@@ -51,7 +51,7 @@ from the road, put Tailscale or a similar zero-trust network in front. No third 
 **Lean, modern Ruby**  
 Ruby 4 with async/Fiber, ~3,000 lines of Ruby, ~35 MB RAM in steady state.
 No database, no build step, no framework used. Stage - a template plugin for browser
-UI - is ~440 lines of JS. 
+UI - is ~450 lines of JS. 
 
 ---
 
@@ -68,8 +68,8 @@ docker compose up -d
 Dashboard: `http://localhost:8080/dylan`
 
 After the first build, code changes only need a restart - `git pull &&
-docker restart dylan` picks up everything. Only `Gemfile` changes require
-a new image build.
+docker restart dylan` (or a call to `/reload`) picks up everything. Only
+`Gemfile` changes require a new image build.
 
 > For host-based routing (`http://sync.lan`), give Dylan its own IP via a
 > Docker macvlan network. See [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -84,6 +84,7 @@ a new image build.
 **Simple redirects (YAML)**
 ```yaml
 # config/redirects.yaml
+domains: ['dy.lan']   # optional: only for these hosts
 redirects:
   - pattern: '^/g/(.+)$'
     target: 'https://google.com/search?q=${1}'
@@ -95,9 +96,12 @@ redirects:
 **Host-based routing**
 ```yaml
 # config/host-redirects.yaml
-hosts:
-  sync.lan: 'http://192.168.1.73:8384'
-  dt.lan:   'http://192.168.1.73:8080'
+redirects:
+  - pattern: 'sync\.lan'
+    target:  'http://192.168.1.73:8384'
+    type:    proxy      # URL stays; default is a 302 redirect
+  - pattern: 'dt\.lan'
+    target:  'http://192.168.1.73:8080'
 ```
 
 Yes, this is the use case that a URL shortener also covers. Dylan
@@ -138,6 +142,7 @@ Each button is defined in YAML with a type:
 | `input`  | Text input → forwarded as a parameter |
 | `notes`  | Cheat-sheet browser (fetched from Milan, split-view) |
 | `jobs`   | Aggregated live job log across all Milan agents |
+| `widget` | Passive state tile, pushed by scripts to a Milan agent |
 
 ```yaml
 # config/stage.yaml
@@ -197,6 +202,7 @@ lib/
 ├── response.rb      # HTTP helpers (text / html / json / redirect / sse)
 ├── http_pool.rb     # Pooled Async::HTTP::Client
 ├── milan.rb         # Milan agent client (get, stream, health, SSE proxy)
+├── ansi.rb          # ANSI → HTML for terminal output
 └── static_assets.rb # Static file serving with ETag + mtime hot-reload
 ```
 
@@ -220,14 +226,14 @@ Ruby heap (~15 MB base) + ~3,000 LOC of application code + the cached
 font file. That's it.
 
 **Performance**  
-~20 ms response time on LAN. >5,000 req/s on a Mac mini M4. >2,000 req/s
-on a Synology DS224+.
+A few milliseconds per request on the LAN. 2,000+ req/s on a Synology
+DS224+, 20,000+ req/s on a Mac mini M4.
 
 **Hot-reload**  
-YAML configs are mtime-checked per request, throttled to 10 s intervals.
+YAML configs are mtime-checked per request, throttled to 5 s intervals.
 Static assets (CSS/JS/font) serve from memory after first load, validated
-by ETag + mtime. Plugins reload on `/reload` without restarting the
-container.
+by ETag + mtime. Code changes need `/reload`: it ends the Ruby process and
+Docker restarts the container within seconds.
 
 **Streaming**  
 SSE responses proxy live output from Milan agents straight to the browser.
@@ -247,7 +253,7 @@ even mid-stream.
 - Plugin architecture for custom workflows
 - Built-in dashboard (`/dylan`) with routes, stats, and route-tester
 - Hot-reload for YAML configs (mtime-throttled), CSS/JS (ETag-validated)
-- Circuit breaker (auto-disables broken plugins)
+- Circuit breaker (disables a failing plugin for 5 minutes; its paths answer 503)
 - Reusable libraries: Milan client, HTTP pool, static-asset server
 - ntfy push notifications
 

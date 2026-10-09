@@ -16,8 +16,11 @@ After the first build, updates only require a restart — no rebuild:
 
 ```bash
 git pull
-docker restart dylan
+docker restart dylan        # or: curl http://localhost:8080/reload
 ```
+
+`/reload` ends the Ruby process and Docker's restart policy brings the
+container back (5–15 s), so it picks up `server.rb` and `lib/` as well.
 
 Only Gemfile changes require a new image build (`docker compose up -d --build`).
 
@@ -30,6 +33,7 @@ Only Gemfile changes require a new image build (`docker compose up -d --build`).
 Edit `config/redirects.yaml`:
 
 ```yaml
+domains: ['dy.lan']   # optional: only answer for these Host headers
 redirects:
   # Google search
   - pattern: '^/g/(.+)$'
@@ -49,12 +53,19 @@ redirects:
 
 Redirects are hot-reloaded — no restart needed.
 
+With `domains:` set, a request for any other host falls through to the next
+plugin: `curl http://localhost:8080/g/ruby` is a 404 while
+`curl -H 'Host: dy.lan' http://localhost:8080/g/ruby` redirects.
+
 ### Environment Variables
 
 ```yaml
 environment:
   - PORT=80               # Server port
   - RUBY_ENV=production   # Environment mode
+  - TZ=Europe/Berlin      # Container time zone (cron, log timestamps)
+  # - DYLAN_DEBUG=1       # log every request, not only status >= 400
+  # - DYLAN_QUIET=1       # log no requests at all
 ```
 
 ---
@@ -74,28 +85,34 @@ docker logs dylan -f
 
 You should see:
 ```
-Dylan 1.1 - Async HTTP Server (Ruby 4.0)
-Loading plugins from: /app/plugins
-Server running on http://0.0.0.0:80
+Dylan 1.1 - Async Dynamic HTTP Router
+✅ Loading: 00-host-redirects.rb
+…
+Loaded 14/14 plugin file(s)
+Server running on port 80
 ```
 
 ### Common Issues
 
 - **Container won't start**: Check logs, verify no IP conflicts (macvlan) or port conflicts (bridge)
 - **Can't access from network**: With bridge networking use `localhost:8080`. With macvlan ping the assigned IP.
-- **Plugin not loading**: Check logs for errors. Plugins that error 5+ times are auto-disabled by the circuit breaker. Fix the plugin and restart: `docker restart dylan`
+- **Plugin not loading**: Check logs for `FAILED to load`. Fix the plugin and `/reload`.
+- **A route answers 500, 503 or 504**: the plugin that owns the path failed — 500 is an exception, 504 its timeout, 503 the circuit breaker (below). The log has the error and its location (`docker logs dylan | grep "ERROR in"`).
 
 ### Circuit Breaker
 
-Plugins that error 5+ times are automatically disabled. Check status at `/dylan/stats`. Fix the plugin, restart Dylan, and it resets.
+A plugin with 5 errors within 60 s is disabled for 5 minutes and re-enabled automatically afterwards. While it is off, its paths answer 503. Errors and disabled plugins show at `/dylan/stats`; a `/reload` clears the state at once.
 
 ### Performance
 
-- ~24 MB RAM
-- ~20ms response time
-- 5,000+ req/s (Mac mini M4), 2,000+ req/s (Synology DS224+)
+- ~35 MB RAM (resident, steady state)
+- A few milliseconds per request on the LAN
+- 2,000+ req/s on a Synology DS224+, 20,000+ req/s on a Mac mini M4
 
 ```bash
-# Benchmark
-ab -n 1000 -c 10 http://localhost:8080/g/test
+# Latency, async concurrency and a short load run, with expected statuses
+DYLAN_HOST=localhost DYLAN_PORT=8080 ruby test_performance.rb
+
+# Throughput only
+wrk -t2 -c20 -d10s -H 'Host: dy.lan' http://localhost:8080/dylan/stats
 ```

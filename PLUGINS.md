@@ -70,9 +70,9 @@ class SlowAPIPlugin < Dylan::Plugin
   timeout(3.0)  # Allow up to 3 seconds (default is 500ms)
 
   def call(host, path, request)
-    # Make external API call
-    # Use Async::Task.current.sleep to yield CPU
-    Async::Task.current.sleep(2)
+    # Make external API call — plain sleep/IO yields to other requests
+    # (fiber scheduler), so this stands in for a slow backend
+    sleep(2)
 
     Dylan::Response.json({ status: "ok" })
   end
@@ -81,7 +81,7 @@ end
 
 ### Plugin Lifecycle
 
-1. **Load**: Plugins are loaded alphabetically by filename
+1. **Load**: Plugins are loaded by basename across all plugin folders
    - `00-*.rb` loads before `50-*.rb`
    - Use numeric prefixes to control order
 
@@ -91,11 +91,16 @@ end
    - First matching pattern wins
    - Once a plugin returns a response, routing stops
    - Failed plugins don't stop routing (error handling continues to next plugin)
+   - If no later plugin answers, the first failure decides the status:
+     500 for an exception, 504 for a timeout, 503 while the circuit breaker
+     holds the plugin off. Only a path no plugin matches is a 404.
 
-4. **Reload**: Trigger hot-reload without restarting the container
+4. **Reload**: `/reload` ends the Ruby process; Docker's restart policy
+   brings the container back within seconds, with every plugin, `lib/` and
+   `server.rb` loaded fresh
    ```bash
    curl http://localhost:8080/reload
-   # or restart the container for a full reset:
+   # same effect from the host:
    docker restart dylan
    ```
 
@@ -117,12 +122,15 @@ plugins/
 │   ├── 55-stage.rb          # StageBase + ManageStage instance
 │   ├── 90-maintenance.rb
 │   ├── 91-manage.rb         # Stage instance at /manage
-│   └── 95-whoami.rb         # milan identity check (?name=, whoami_also_from)
+│   ├── 95-whoami.rb         # milan identity check (?name=, whoami_also_from)
+│   └── 96-reload.rb         # /reload — restart the server process
 ├── extra/     # public, ships with Dylan (demos, anonymized variants)
-│   ├── 10-checkip.rb
-│   ├── 30-pattern-redirect.rb
-│   ├── 60-weather-demo.rb
-│   └── 65-monitor.rb
+│   ├── 10-checkip.rb.disabled
+│   ├── 30-pattern-redirect.rb.disabled
+│   ├── 60-weather-demo.rb.disabled
+│   ├── 65-monitor.rb
+│   ├── 66-probe.rb
+│   └── 99-chaos-test.rb.disabled   # rename to enable (see Testing)
 ├── custom/    # your private plugins — gitignored, deployed everywhere
 │   └── 56-my-stage.rb       # example: private Stage instance
 └── local/     # belongs to ONE deployment — never travels, usually empty
@@ -511,7 +519,7 @@ def call(host, path, request)
     Async do
       3.times do |i|
         body.write("data: line #{i}\n\n")
-        Async::Task.current.sleep(1)
+        sleep(1)
       end
       body.write("event: done\ndata: \n\n")
       body.close
@@ -548,10 +556,11 @@ pattern(%r{^/g/(.+)$})
 # Match /user/123/profile
 pattern(%r{^/user/(\d+)/profile$})
 
-# Match /search with query params (note: path only, no query string)
-pattern(%r{^/search$})
+# Match /search with or without query params — Dylan's path includes the
+# query string, so ^/search$ would miss /search?q=ruby
+pattern(%r{^/search(\?|$)})
 
-# Match host (for multi-tenant setups)
+# Match host (for multi-tenant setups) — match? tries host, then path
 pattern(%r{^api\.example\.com$})
 ```
 
@@ -676,13 +685,13 @@ end
 1. **Install Ruby 4.0** (if testing without Docker)
    ```bash
    # Ruby 4.0 via rbenv/asdf
-   rbenv install 4.0.1
-   rbenv local 4.0.1
+   rbenv install 4.0.7
+   rbenv local 4.0.7
    ```
 
 2. **Install dependencies**
    ```bash
-   cd dylan
+   cd dy.lan
    bundle install
    ```
 
@@ -693,15 +702,16 @@ end
 
 4. **Or use Docker** (recommended)
    ```bash
-   docker-compose -f docker-compose.mac.yml up
+   docker compose up
    ```
 
 ### File Structure
 
 ```
-dylan/
+dy.lan/
 ├── server.rb                       # Main server entry point
 ├── Gemfile                         # Ruby dependencies
+├── test_performance.rb             # Latency, concurrency and load check
 │
 ├── lib/                            # Reusable libraries
 │   ├── plugin.rb                   # Base plugin class + DSLs
@@ -709,6 +719,7 @@ dylan/
 │   ├── response.rb                 # Response helpers (text/html/json/sse/error)
 │   ├── http_pool.rb                # Async::HTTP::Client pool
 │   ├── milan.rb                    # Milan companion-server client
+│   ├── ansi.rb                     # ANSI → HTML for terminal output
 │   └── static_assets.rb            # Static file server with ETag caching
 │
 ├── plugins/                        # Plugin folders (recursive scan)
@@ -721,6 +732,7 @@ dylan/
 │   │   ├── 90-maintenance.rb       # Dashboard, /dylan/*
 │   │   ├── 91-manage.rb            # Stage instance at /manage
 │   │   ├── 95-whoami.rb            # Milan identity check
+│   │   ├── 96-reload.rb            # /reload — restart the server process
 │   │   └── stage/                  # Stage frontend assets
 │   │       ├── index.html
 │   │       ├── app.js
@@ -728,21 +740,28 @@ dylan/
 │   │       ├── MonaspaceArgon-Variable.woff2
 │   │       └── icons/              # MDI SVG icons
 │   ├── extra/                      # Demos & public examples
-│   │   ├── 10-checkip.rb           # Synology CheckIP emulation
-│   │   ├── 30-pattern-redirect.rb  # Pattern-redirect demo
-│   │   ├── 60-weather-demo.rb      # External API demo
-│   │   └── 65-monitor.rb           # Network-monitor display
-│   └── custom/                     # Your private plugins (gitignored)
+│   │   ├── 10-checkip.rb.disabled           # Synology CheckIP emulation
+│   │   ├── 30-pattern-redirect.rb.disabled  # Pattern-redirect demo
+│   │   ├── 60-weather-demo.rb.disabled      # External API demo
+│   │   ├── 65-monitor.rb                    # Network-monitor display
+│   │   ├── 66-probe.rb                      # Polls the Milan agents
+│   │   └── 99-chaos-test.rb.disabled        # Misbehaves on purpose
+│   ├── custom/                     # Your private plugins (gitignored)
+│   └── local/                      # Plugins of one deployment (gitignored)
 │
 ├── config/
 │   ├── crontab                     # Cron schedule (container-side)
+│   ├── manage.yaml                 # Stage config for /manage
 │   ├── milan.yaml                  # Milan agent registry (+ whoami_also_from)
-│   └── redirects.yaml              # Simple redirects
+│   ├── redirects.yaml              # Simple redirects
+│   └── runtime.yaml                # ZJIT / Ruby::Box switches
 │
 ├── scripts/
 │   ├── monitor.sh                  # Monitor cron job
 │   ├── smoke.sh                    # Smoke tests for live instance
 │   └── start.sh                    # Container startup
+│
+├── test/                           # minitest, see Testing Plugins
 │
 └── data/                           # Runtime data (gitignored, generated)
 ```
@@ -753,8 +772,8 @@ dylan/
 # 1. Edit a plugin
 vim plugins/extra/70-my-plugin.rb
 
-# 2. Restart container (hot reload not available)
-docker restart dylan
+# 2. Restart the server (or: docker restart dylan)
+curl http://localhost:8080/reload
 
 # 3. Test the change
 curl -I http://localhost:8080/your/path
@@ -772,28 +791,39 @@ docker exec -it dylan /bin/sh
 
 ### Unit tests
 
-Logic that does not need HTTP lives in `lib/` and is tested there — minitest,
-no server, no container:
+Logic that does not need a running server is tested with minitest — no
+server, no container, but the gems from the `Gemfile` (`bundle install`):
 
 ```bash
-ruby test/ansi_test.rb     # ANSI → HTML renderer
-ruby test/board_test.rb    # widget tiles, discover, ttl, ETag (Milan stubbed)
+ruby test/ansi_test.rb          # ANSI → HTML renderer
+ruby test/panel_test.rb         # Stage panels, link grid, widget tiles (Milan stubbed)
+ruby test/router_test.rb        # routing, failure statuses, circuit breaker
+ruby test/sse_stream_test.rb    # SSE proxy error path reaches the browser
+ruby test/stream_frame_test.rb  # iframe routes outside the plugin timeout
+ruby test/whoami_test.rb        # milan identity check
+```
+
+Without a local Ruby 4, run them in the image:
+
+```bash
+docker compose run --rm --no-deps -v "$PWD/test:/app/test:ro" dylan \
+  sh -c 'for f in test/*_test.rb; do ruby "$f"; done'
 ```
 
 ### Manual Testing
 
 ```bash
-# Test redirects
-curl -I http://localhost:8080/g/ruby
+# Test redirects — redirects.yaml only answers for its `domains:`
+curl -I -H 'Host: dy.lan' http://localhost:8080/g/ruby
 # Expected: 302 redirect to Google
 
 # Test JSON responses
-curl http://localhost:8080/weather/Berlin
-# Expected: JSON with weather data
+curl 'http://localhost:8080/dylan/stats?format=json'
+# Expected: JSON with server statistics
 
 # Test HTML responses
-curl http://localhost:8080/dylan
-# Expected: HTML management UI
+curl http://localhost:8080/manage
+# Expected: HTML management UI (/dylan redirects here)
 
 # Test with verbose output
 curl -v http://localhost:8080/your/path
@@ -818,19 +848,19 @@ see [Frontend rules](#frontend-rules-pluginscorestage).
 
 ### Performance Testing
 
-Test async behavior with concurrent requests:
+`test_performance.rb` checks real routes against their expected status,
+runs `/dylan/slow/2000` next to fast requests (they must not wait for it)
+and adds a short keep-alive load run. It exits 1 on any unexpected status:
 
 ```bash
-# Install Apache Bench (if not installed)
-brew install httpd
+DYLAN_HOST=localhost DYLAN_PORT=8080 ruby test_performance.rb
+DYLAN_HOST=dy.lan DYLAN_PORT=80 DYLAN_LOAD_SECONDS=0 ruby test_performance.rb  # live, no load
+```
 
-# 1000 requests, 10 concurrent
-ab -n 1000 -c 10 http://localhost:8080/dylan
+The Ruby client tops out early; for throughput numbers use wrk:
 
-# Check if slow requests don't block fast ones
-curl http://localhost:8080/weather/Berlin &  # Slow (2s)
-sleep 0.1
-curl http://localhost:8080/g/test           # Should be instant!
+```bash
+wrk -t2 -c20 -d10s -H 'Host: dy.lan' http://localhost:8080/dylan/stats
 ```
 
 ### Circuit Breaker Testing
@@ -842,11 +872,14 @@ Test error handling with the chaos plugin:
 mv plugins/extra/99-chaos-test.rb.disabled plugins/extra/99-chaos-test.rb
 docker restart dylan
 
-# Trigger errors to test circuit breaker
-for i in {1..5}; do curl http://localhost:8080/chaos/error; done
+# Trigger errors to test circuit breaker — each answers 500
+for i in {1..5}; do curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/chaos/error; done
+
+# Now disabled for 5 minutes: 503
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/chaos/error
 
 # Check stats to see circuit breaker activation
-curl http://localhost:8080/dylan/stats
+curl 'http://localhost:8080/dylan/stats?format=json'
 ```
 
 ---
@@ -904,7 +937,7 @@ crontab -l
 
 # Check Ruby version
 ruby --version
-# Should show: ruby 4.0.1
+# Should show: ruby 4.0.x
 
 # Check gems
 bundle list
@@ -956,18 +989,24 @@ end
 Use numeric prefixes to control load order:
 
 ```
-00-maintenance.rb     # Core functionality (always first)
-10-*.rb              # Infrastructure (CheckIP, monitoring)
-20-*.rb              # Network services
+00-*.rb              # Host-based routing and proxy (sees every request first)
+05-*.rb              # Favicon
+10-*.rb              # Infrastructure (CheckIP)
 30-*.rb              # Pattern redirects
-50-*.rb              # Simple redirects
+35-*.rb              # Milan forwarding (/<agent>/…)
+50-*.rb              # Simple redirects (YAML)
+55-59-*.rb           # Stage instances
 60-*.rb              # Demos and experiments
+65-69-*.rb           # Monitoring (monitor, probe)
 70-*.rb              # Custom user plugins
+90-99-*.rb           # Maintenance, /manage, whoami, reload, chaos test
 ```
 
 ### Error Handling
 
-Dylan has built-in error handling, but you can add custom handling:
+If `call` raises, the router logs the error and answers 500 (504 on a
+timeout) unless a later plugin answers the path. Catch it yourself only when
+the plugin has something better to say:
 
 ```ruby
 def call(host, path, request)
@@ -990,20 +1029,22 @@ end
 ### Performance Tips
 
 1. **Keep plugins fast**: Default 500ms timeout enforced
-2. **Use async sleep**: For delays, use `Async::Task.current.sleep(n)`
-3. **Set custom timeouts**: For external APIs, configure `timeout(seconds)`
-4. **Avoid blocking**: Don't use regular `sleep` or blocking operations
+2. **Set custom timeouts**: For external APIs, configure `timeout(seconds)`
+3. **Waiting is fine, computing is not**: Ruby 4 runs Dylan under a fiber
+   scheduler, so `sleep`, socket and HTTP I/O yield to other requests. What
+   blocks everyone is CPU work and C extensions that bypass the scheduler.
+   (`Async::Task#sleep` is deprecated — plain `sleep` does the same.)
 
 ```ruby
-# BAD: Blocking operation (blocks all other requests!)
+# BAD: CPU-bound loop (no other request is served meanwhile)
 def call(host, path, request)
-  sleep 5  # This blocks the entire fiber!
-  Dylan::Response.text("Done")
+  total = (1..200_000_000).sum { it * it }
+  Dylan::Response.text(total.to_s)
 end
 
-# GOOD: Async sleep (yields to other requests)
+# FINE: waiting yields (other requests continue — see /dylan/slow)
 def call(host, path, request)
-  Async::Task.current.sleep(5)  # Other requests continue!
+  sleep 2
   Dylan::Response.text("Done")
 end
 
@@ -1017,10 +1058,12 @@ end
 
 Dylan includes automatic robustness features:
 
-1. **Circuit Breaker**: Plugins that error 5+ times are automatically disabled
-2. **Timeout Protection**: Plugins that exceed their timeout are killed
+1. **Circuit Breaker**: 5 errors within 60 s disable a plugin for 5 minutes;
+   meanwhile its paths answer 503, then it is re-enabled automatically
+2. **Timeout Protection**: Plugins that exceed their timeout are cancelled (504)
 3. **Safe Loading**: Syntax errors in plugins don't crash the server
-4. **Error Recovery**: Plugin errors don't stop request processing
+4. **Error Recovery**: Plugin errors don't stop request processing; a failed
+   path answers 500, not a misleading 404
 
 Monitor these features at `/dylan/stats`.
 
