@@ -65,21 +65,42 @@ device_up() { # ip vantage
     ping -c 2 -W 1 "$1" >/dev/null 2>&1
   fi
 }
+# A device that answers ICMP can still be invisible to its controller. A
+# Matter accessory publishes its service over mDNS, and that announcement can
+# stop while the device keeps routing packets. Measured on two Shelly Plug M
+# Gen3 on 2026-10-15: after 26 days of uptime ram_free had fallen to 17 KB,
+# both plugs had vanished from the Home app, and the tile here stayed green
+# because ping still answered. A fifth field in the watch entry turns that
+# into something the monitor can see.
+#
+# The probe asks milan, because it needs dns-sd and LAN multicast, and
+# neither exists in this container.
+matter_up() { # mac
+  [[ "$(curl -sf -m 12 "$MILAN_URL/matter/$1" 2>/dev/null)" == ok* ]]
+}
+
 WATCH_OUT=$(mktemp)
 for target in "${!WATCH[@]}"; do
-  IFS=':' read -r label ip mode vantage <<< "${WATCH[$target]}"
-  if device_up "$ip" "$vantage"; then
+  IFS=':' read -r label ip mode vantage matter_mac <<< "${WATCH[$target]}"
+  if ! device_up "$ip" "$vantage"; then
+    if [[ "$mode" == "soll-an" ]]; then
+      echo "🟠 $label (\`$ip\`) — aus, sollte laufen" >> "$WATCH_OUT"
+      watch_push+=("$target|$label|EBCB8B|warn|aus, sollte laufen")
+    else
+      echo "⚪ $label (\`$ip\`) — aus" >> "$WATCH_OUT"
+      watch_push+=("$target|$label|4C566A||aus")
+    fi
+    watch_result+=("$target|$label|$ip|down|$label ausgefallen|antwortet nicht")
+  elif [[ -n "$matter_mac" ]] && ! matter_up "$matter_mac"; then
+    # Up on the network, gone from Home. Worth a warning whatever the
+    # expectation says, because this state is never normal.
+    echo "🟠 $label (\`$ip\`) — im Netz, ohne Matter" >> "$WATCH_OUT"
+    watch_push+=("$target|$label|EBCB8B|warn|im Netz, ohne Matter")
+    watch_result+=("$target|$label|$ip|down|$label nicht in Home|ist im Netz, kündigt aber keinen Matter-Dienst an")
+  else
     echo "🟢 $label (\`$ip\`) — an" >> "$WATCH_OUT"
     watch_push+=("$target|$label|A3BE8C|check|an")
-    watch_result+=("$target|$label|$ip|up")
-  elif [[ "$mode" == "soll-an" ]]; then
-    echo "🟠 $label (\`$ip\`) — aus, sollte laufen" >> "$WATCH_OUT"
-    watch_push+=("$target|$label|EBCB8B|warn|aus, sollte laufen")
-    watch_result+=("$target|$label|$ip|down")
-  else
-    echo "⚪ $label (\`$ip\`) — aus" >> "$WATCH_OUT"
-    watch_push+=("$target|$label|4C566A||aus")
-    watch_result+=("$target|$label|$ip|down")
+    watch_result+=("$target|$label|$ip|up||")
   fi
 done
 
@@ -121,7 +142,7 @@ fi
 ALERT_TMP="${ALERT_STATE}.tmp"
 : > "$ALERT_TMP"
 for entry in "${watch_result[@]}"; do
-  IFS='|' read -r target label ip result <<< "$entry"
+  IFS='|' read -r target label ip result headline detail <<< "$entry"
   prev="${ALERT_PREV[$target]:-unknown}"
   fails="${ALERT_FAILS[$target]:-0}"
   if [[ "$result" == "up" ]]; then
@@ -132,8 +153,8 @@ for entry in "${watch_result[@]}"; do
     if (( fails >= ALERT_FAILS_REQUIRED )); then
       state="offline"
       if [[ "$prev" != "offline" && -n "${ALERT[$target]:-}" ]]; then
-        alert_ntfy "${ALERT[$target]}" "$label ausgefallen" \
-          "$label ($ip) antwortet seit mindestens $((fails * 5)) Minuten nicht. $(date '+%d.%m. %H:%M')"
+        alert_ntfy "${ALERT[$target]}" "$headline" \
+          "$label ($ip) $detail. Seit mindestens $((fails * 5)) Minuten. $(date '+%d.%m. %H:%M')"
       fi
     else
       # One miss is not an outage: keep the old verdict, count the failure.
