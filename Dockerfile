@@ -8,11 +8,15 @@ WORKDIR /app
 # Install gems first (separate layer — only rebuilds when Gemfile changes).
 # build-base is needed to compile io-event's native extension; installing
 # and removing it inside one RUN keeps the toolchain out of the image.
+# Bundler also leaves the rubygems.org compact index (~24 MB) in
+# /root/.bundle and the downloaded .gem files in its cache; neither is
+# needed at runtime.
 COPY Gemfile Gemfile.lock* ./
 RUN apk add --no-cache --virtual .build-deps build-base \
  && bundle config set --local without test \
  && bundle install \
- && apk del .build-deps
+ && apk del .build-deps \
+ && rm -rf /root/.bundle /root/.cache /usr/local/bundle/cache
 
 # Bake in app code as a fallback — works out of the box without volume mounts.
 # Copied path by path rather than `COPY . .`: the build context is a live
