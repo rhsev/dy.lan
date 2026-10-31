@@ -19,6 +19,7 @@ module Dylan
   #   Dylan::Milan.agent_url("mini")                # => "http://..."
   #   Dylan::Milan.enabled?                         # => true/false
   #   Dylan::Milan.get(agent, path)                 # => Milan::Response (body in memory)
+  #   Dylan::Milan.post(agent, path, body)          # => Milan::Response, body goes to the script's stdin
   #   Dylan::Milan.stream(agent, path) { |chunk| }  # => yields raw body chunks
   module Milan
     CONFIG_PATH = File.join(__dir__, '..', 'config', 'milan.yaml')
@@ -85,6 +86,16 @@ module Dylan
       # @raise [UnreachableError]  wenn Verbindung scheitert
       def get(agent_name, path)
         response = client_for(agent_name).get(path)
+        Response.new(response.status, response.headers, response.read.to_s)
+      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
+        raise UnreachableError.new(agent_name, e.message)
+      end
+
+      # POSTs body; milan hands it to the script on stdin.
+      # @raise [UnknownAgentError] wenn Agent nicht in Config
+      # @raise [UnreachableError]  wenn Verbindung scheitert
+      def post(agent_name, path, body, content_type: 'text/plain; charset=utf-8')
+        response = client_for(agent_name).post(path, [['content-type', content_type]], [body.to_s])
         Response.new(response.status, response.headers, response.read.to_s)
       rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
         raise UnreachableError.new(agent_name, e.message)
