@@ -17,7 +17,6 @@
 #   GET /stage/run/<id>     → SSE stream proxy
 #   GET /stage/jobs/check   → Cron hook: notify + ack pending jobs
 #   GET /stage/notes/...    → Notes-Source via Milan
-#   GET /stage/bookmarks/<a>→ Pinboard-Seite via Milan (iframe-Dokument)
 #   GET /stage/album/<b>    → Album-Seite via Milan (iframe-Dokument)
 #
 # Panel-Renderer (type: panel, panel: links|widget|jobs|notes) rendern
@@ -94,8 +93,6 @@ class StageBase < Dylan::Plugin
     when %r{^/panel/([\w-]+)$}
       id = Regexp.last_match(1)
       fetch_request?(request) ? handle_panel(id, request, host) : handle_index(id)
-    when %r{^/bookmarks/(.+)$}
-      handle_bookmarks_frame(Regexp.last_match(1))
     when %r{^/album(?:/(.*))?$}
       handle_album_frame(Regexp.last_match(1).to_s)
     when '/jobs/check'
@@ -146,8 +143,8 @@ class StageBase < Dylan::Plugin
                when 'widget' then handle_widgets(request, host)
                when 'jobs'   then handle_jobs_view
                when 'notes'  then render_notes_panel(btn['source'] || btn['id'])
-               when 'bookmarks' then render_bookmarks_panel(btn['source'] || 'all')
-               when 'album'     then render_album_panel(btn['source'].to_s)
+               when 'frame'  then render_frame_panel(btn['src'].to_s)
+               when 'album'  then render_album_panel(btn['source'].to_s)
                else Dylan::Response.error(404, "Panel '#{CGI.escape_html(id)}' not found")
                end
 
@@ -232,28 +229,15 @@ class StageBase < Dylan::Plugin
     end
   end
 
-  # Bookmarks panel: the live pinboard script (a milan custom script), embedded
-  # and CSS-isolated in an iframe. `source` is the pinboard path tail — a view
-  # and/or scope, e.g. "all", "read", "read/articles".
-  #
-  # Lazy delivery: the panel handler returns instantly with just the iframe; its
-  # src points at the stage's own /bookmarks/<arg> route (below), which fetches
-  # the page from milan as a separate request. So the heavy render never blocks
-  # the panel handler, and a cold connect shows as iframe loading rather than an
-  # "execution expired" panel error. pinboard.rb stays the sole renderer.
-  def render_bookmarks_panel(arg)
-    src = "#{self.class.url_prefix}/bookmarks/#{arg}"
+  # Frame panel: any page of this dylan, embedded and CSS-isolated in an iframe
+  # that fills the pad. `src` is a path on the same host, e.g. "/monitor". The
+  # panel handler returns at once; the page loads as its own request.
+  def render_frame_panel(src)
+    return Dylan::Response.error(404, 'Frame panel needs src: a path starting with /') unless src.start_with?('/') && !src.start_with?('//')
     Dylan::Response.html(%(<iframe class="cb-panel" src="#{CGI.escape_html(src)}"></iframe>))
   end
 
-  # The iframe's own document: the live pinboard page fetched from milan. Served
-  # by the stage plugin so it matches the pad host, unlike the domain-gated
-  # /mini/ proxy (which returns the pad itself when the host lacks *.lan).
-  def handle_bookmarks_frame(arg)
-    stream_milan_page("/pinboard/#{arg}", label: 'Bookmarks')
-  end
-
-  # Albums panel: same shape as the bookmarks panel above — an iframe on the
+  # Albums panel: an iframe on the
   # stage's own /album/ route, so the album keeps its own stylesheet instead of
   # being spliced into the pad's document. `source` names the album to open
   # first; without it milan picks the first one it has rendered. The album page
@@ -270,13 +254,12 @@ class StageBase < Dylan::Plugin
     stream_milan_page("/album/#{binder}", label: 'Album')
   end
 
-  # Both frame routes proxy a *script run*, not a lookup: `register album`
-  # renders thumbnails the first time an album is opened, and the pinboard runs
-  # grubber over the store. Either can outlast the stage's 5s budget, and the
-  # router's abort surfaced as "Album error: execution expired" — a milan error
-  # for a deadline milan never saw.
+  # The album route proxies a *script run*, not a lookup: `register album`
+  # renders thumbnails the first time an album is opened, which can outlast the
+  # stage's 5s budget, and the router's abort surfaced as "Album error:
+  # execution expired" — a milan error for a deadline milan never saw.
   #
-  # Streaming takes these two routes out of the budget altogether: `call`
+  # Streaming takes this route out of the budget altogether: `call`
   # returns the moment the body exists, and the body fills afterwards — the same
   # escape the SSE proxy already uses. The panel handlers stay inside the budget
   # where they belong; only the iframe documents move.
@@ -819,7 +802,7 @@ class StageBase < Dylan::Plugin
   def badge_agent_for(btn)
     kind = btn['type'] == 'panel' ? btn['panel'] : btn['type']
     case kind
-    when 'notes', 'bookmarks'
+    when 'notes'
       candidate = notes_agent
       Dylan::Milan.agents.key?(candidate) ? candidate : nil
     when 'jobs'

@@ -141,7 +141,7 @@ Each button is defined in YAML with a type:
 | `notes`  | Cheat-sheet browser (fetched from Milan, split-view) |
 | `jobs`   | Aggregated live job log across all Milan agents |
 | `widget` | Passive state tile, pushed by scripts to a Milan agent |
-| `panel`  | Switches the main area to a view: links, tiles, jobs, notes, bookmarks, album |
+| `panel`  | Switches the main area to a view: links, tiles, jobs, notes, frame, album |
 
 ```yaml
 # config/stage.yaml

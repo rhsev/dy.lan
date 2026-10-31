@@ -2,8 +2,8 @@
 
 # ruby test/stream_frame_test.rb
 #
-# Die Eigenschaft, um die es geht: die beiden iframe-Routen (Album, Pinboard)
-# liegen NICHT mehr im Zeitbudget des Plugins. Der Test stellt einen langsamen
+# Die Eigenschaft, um die es geht: die iframe-Route des Albums liegt NICHT
+# mehr im Zeitbudget des Plugins. Der Test stellt einen langsamen
 # Milan hin, wickelt den Aufruf in genau den Timeout-Wrapper, den der Router
 # benutzt (lib/router.rb), und prueft, dass die Antwort trotzdem kommt.
 
@@ -32,7 +32,10 @@ Dylan::Milan.singleton_class.prepend(SlowMilanStub)
 class FrameStage < StageBase
   pattern    %r{^/stage}
   url_prefix '/stage'
-  def config = { 'title' => 'Stage', 'sections' => [] }
+  def config = { 'title' => 'Stage', 'sections' => [{ 'title' => 'Links', 'buttons' => [
+    { 'id' => 'monitor', 'label' => 'monitor', 'type' => 'panel', 'panel' => 'frame', 'src' => '/monitor?x=<1>' },
+    { 'id' => 'evil', 'label' => 'x', 'type' => 'panel', 'panel' => 'frame', 'src' => '//elsewhere.example/' }
+  ] }] }
   def config_mtime = 0
 end
 
@@ -80,21 +83,21 @@ class StreamFrameTest < Minitest::Test
     assert_includes body, 'class="album"'
   end
 
-  def test_slow_pinboard_still_arrives
-    Dylan::Milan.stub_delay = BUDGET * 3
-    Dylan::Milan.stub_body  = '<div class="list"></div>'
-    arrived, body = through_router('/stage/bookmarks/all')
-
-    assert arrived
-    assert_includes body, 'class="list"'
-  end
-
   # Bildpfade muessen weiter auf den Instance-Prefix gezogen werden.
   def test_asset_paths_get_the_prefix
     Dylan::Milan.stub_body = %(<img src="/notes/alben/assets/images/a.jpg">)
     _, body = through_router('/stage/album/urlaub')
 
     assert_includes body, 'src="/stage/notes/alben/assets/images/a.jpg"'
+  end
+
+  # Der Frame-Panel bettet eine Seite desselben Hosts ein und nichts anderes.
+  def test_frame_panel_embeds_a_local_path
+    r = FrameStage.new.send(:handle_panel, 'monitor', nil)
+    body = r.body.join
+    assert_equal 200, r.status
+    assert_includes body, '<iframe class="cb-panel" src="/monitor?x=&lt;1&gt;">'
+    assert_equal 404, FrameStage.new.send(:handle_panel, 'evil', nil).status
   end
 
   # Der Status steht, bevor der Fehler bekannt ist — also gehoert die Meldung

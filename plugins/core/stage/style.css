@@ -162,9 +162,9 @@ aside::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 2px; }
 .panel::-webkit-scrollbar-track { background: transparent; }
 .panel::-webkit-scrollbar-thumb { background: var(--n3); border-radius: 3px; }
 
-/* Bookmarks panel: the live pinboard script, embedded and CSS-isolated in an
-   iframe. When the panel hosts the iframe it becomes a full-bleed flex box so
-   the frame fills the pad regardless of the percentage-height chain. */
+/* Frame and album panels: a page embedded and CSS-isolated in an iframe.
+   When the panel hosts the iframe it becomes a full-bleed flex box so the
+   frame fills the pad regardless of the percentage-height chain. */
 .panel:has(> .cb-panel) { padding: 0; overflow: hidden; display: flex; }
 .cb-panel { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; }
 

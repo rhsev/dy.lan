@@ -384,13 +384,13 @@ sections:
         source: cheaters    # a note source of the Milan agent
 ```
 
-| `panel` | Shows | `source` |
+| `panel` | Shows | `source` / `src` |
 |---|---|---|
 | `links` | the link grid | key under `links:` when it is a map of lists (default `default`) |
 | `widget` | the widget tiles of the instance's `agent` | |
 | `jobs` | background jobs across all agents | |
 | `notes` | a note source rendered by Milan | note source id (default: the button `id`) |
-| `bookmarks` | a Pinboard page via Milan, in a frame | list name (default `all`) |
+| `frame` | a page of this dylan in a frame, e.g. the monitor | `src`: a path, e.g. `/monitor` |
 | `album` | an album page via Milan, in a frame | binder name |
 
 Each panel has its own URL, `/<instance>/panel/<id>` (e.g. `/stage/panel/board`):
