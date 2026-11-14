@@ -18,15 +18,19 @@ module Dylan
   #   @milan.respond(error: Dylan::Milan::UnreachableError.new('mini', 'refused'))
   #   @milan.respond(path: '/stream/counter', chunks: ["data: 1\n\n", "data: 2\n\n"])
   #
-  #   @milan.calls   # => [[:get, 'mini', '/widgets'], ...]
+  #   @milan.calls          # => [[:get, 'mini', '/widgets'], [:post, 'mini', '/receive', 'body'], ...]
+  #   @milan.sent_headers   # => [['content-type', 'text/plain']]   (of the last call)
+  #   @milan.closed_streams # => 1
   #
   # The rule added last wins; a request no rule matches gets an empty 200.
   # A body that is not a String is sent as JSON. An agent that is not in
   # `agents` raises UnknownAgentError, as the real client does.
   #
-  # While a double is in use it answers `agents`, `get`, `post` and `stream`
-  # of Dylan::Milan — and with them `get!`, `post!`, `proxy_sse` and
-  # `health_check`, which are built on those. After `reset`, Dylan::Milan is
+  # While a double is in use it answers `agents`, `request` and `open_stream`
+  # of Dylan::Milan — and with them everything built on those: `get`, `post`,
+  # `get!`, `post!`, `stream`, `pass_stream`, `proxy_sse` and `health_check`.
+  # A call is recorded as [verb, agent, path], with the body as a fourth
+  # element when one was sent. After `reset`, Dylan::Milan is
   # itself again. One double per process is enough: test files that each
   # prepend a stub of their own get in each other's way when they run together.
   class MilanDouble
@@ -57,16 +61,18 @@ module Dylan
         (double = MilanDouble.current) ? double.agents : super
       end
 
-      def get(agent, path)
-        (double = MilanDouble.current) ? double.request(:get, agent, path) : super
+      def request(agent, path, method: 'GET', body: nil, headers: [])
+        return super unless (double = MilanDouble.current)
+
+        double.sent_headers = headers
+        double.request(method.to_s.downcase.to_sym, agent, path, body)
       end
 
-      def post(agent, path, body, **options)
-        (double = MilanDouble.current) ? double.request(:post, agent, path, body) : super
-      end
+      def open_stream(agent, path, method: 'GET', body: nil, headers: [])
+        return super unless (double = MilanDouble.current)
 
-      def stream(agent, path, &block)
-        (double = MilanDouble.current) ? double.stream(agent, path, &block) : super
+        double.sent_headers = headers
+        double.open_stream(method.to_s.downcase.to_sym, agent, path, body)
       end
     end
 
@@ -77,7 +83,15 @@ module Dylan
       @agents = agents.dup
       @rules  = []
       @calls  = []
+      @closed_streams = 0
     end
+
+    # How many streams the plugin has closed again. A stream left open keeps
+    # a connection to the agent.
+    attr_reader :closed_streams
+
+    # The [name, value] header pairs of the last call.
+    attr_accessor :sent_headers
 
     def respond(path: nil, agent: nil, status: 200, body: '', headers: {}, error: nil, delay: nil, chunks: nil)
       @rules.unshift(Rule.new(path, agent, status, body, headers, error, delay, chunks))
@@ -95,13 +109,15 @@ module Dylan
       Dylan::Milan::Response.new(rule.status, rule.headers, body)
     end
 
-    def stream(agent, path)
-      rule = answer_for(:stream, agent, path)
-      unless rule.status == 200
-        raise Dylan::Milan::UnreachableError.new(agent, "HTTP #{rule.status}: #{rule.body.to_s.strip}")
-      end
-
-      (rule.chunks || [rule.body.to_s]).each { |chunk| yield chunk }
+    # What the real client returns before the body is read. `chunks:` are the
+    # pieces; without them the body is one piece.
+    def open_stream(verb, agent, path, payload = nil)
+      rule = answer_for(verb, agent, path, payload)
+      body = rule.body.is_a?(String) ? rule.body : JSON.generate(rule.body)
+      Dylan::Milan::Stream.new(agent: agent, status: rule.status,
+                               content_type: rule.headers['content-type'].to_s,
+                               chunks: rule.chunks || [body],
+                               on_close: -> { @closed_streams += 1 })
     end
 
     private

@@ -173,6 +173,17 @@ Dylan pairs with [mi.lan](https://github.com/rhsev/mi.lan), a lightweight script
 http://mi.lan/mini/mail/abc123  →  Dylan  →  Milan (Mac)  →  script execution
 ```
 
+`/<agent>/<path>` answers what the agent answers at `/<path>`, with the same
+status. That covers GET, POST, PUT and DELETE; a request body goes to the
+script's stdin. A stream is passed on line by line and may run longer than
+any timeout:
+
+```bash
+curl http://dy.lan/mini/hello/World
+curl -d 'some text' http://dy.lan/mini/receive
+curl -N http://dy.lan/mini/stream/backup
+```
+
 
 Milan agents are declared in `config/milan.yaml`. Stage shows agent
 health as live badges and aggregates job logs across all of them.

@@ -149,7 +149,7 @@ class HelpersTest < Minitest::Test
     skip 'example milan.yaml has no agent at 192.168.1.10' unless agents['mini'] == 'http://192.168.1.10:8080'
 
     [Errno::EHOSTDOWN, Errno::ETIMEDOUT, Errno::ENETUNREACH, Errno::ECONNRESET, EOFError].each do |failure|
-      client.define_singleton_method(:get) { |_path| raise failure }
+      client.define_singleton_method(:get) { |*_args| raise failure }
       assert_raises(Dylan::Milan::UnreachableError, failure.name) { Dylan::Milan.get('mini', '/health') }
     end
   ensure

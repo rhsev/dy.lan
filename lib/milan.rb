@@ -22,10 +22,15 @@ module Dylan
   #   Dylan::Milan.get!(agent, path)                # => Milan::Response (body in memory); raises on non-2xx
   #   Dylan::Milan.post!(agent, path, body)         # => same; the body goes to the script's stdin
   #   Dylan::Milan.get / .post                      # => same without the check: the status is yours to read
+  #   Dylan::Milan.request(agent, path, method:, body:, headers:)   # => the general form (GET, POST, PUT, DELETE)
   #   Dylan::Milan.stream(agent, path) { |chunk| }  # => yields raw body chunks
+  #   Dylan::Milan.pass_stream(agent, path)         # => a Dylan response that streams the agent's answer
   module Milan
     CONFIG_PATH = File.join(__dir__, '..', 'config', 'milan.yaml')
     CONFIG_CHECK_INTERVAL = 10  # Sekunden
+
+    # The request methods that are sent on to an agent.
+    METHODS = %w[GET POST PUT DELETE].freeze
 
     # What a connection to an agent can fail with. All of it means the same to
     # a plugin: the agent is not there. The list used to stop after the first
@@ -56,6 +61,35 @@ module Dylan
         @status = status
         @body   = body.to_s
         super("Milan agent '#{agent}' answered #{status}: #{@body.strip[0, 200]}")
+      end
+    end
+
+    # An answer whose body is still arriving. From open_stream.
+    class Stream
+      attr_reader :agent, :status, :content_type
+
+      def initialize(agent:, status:, content_type:, chunks:, on_close: nil)
+        @agent        = agent
+        @status       = status
+        @content_type = content_type
+        @chunks       = chunks
+        @on_close     = on_close
+      end
+
+      def each(&block) = @chunks.each(&block)
+
+      # The rest of the body in one piece, for the short text of a refusal.
+      def read
+        text = +''
+        each { |chunk| text << chunk }
+        text
+      end
+
+      def close
+        @on_close&.call
+        @on_close = nil
+      rescue StandardError
+        nil
       end
     end
 
@@ -108,24 +142,29 @@ module Dylan
         !!(@config && @config['enabled'] != false)
       end
 
-      # Sammelt Body in Memory. Für kleine/JSON-Antworten.
+      # ── Calls: the whole answer in memory ──────────────────────────────────
+
+      # One request to an agent, any of METHODS. `body` goes to the script's
+      # stdin (milan reads it for every method that carries one); `headers`
+      # is a list of [name, value] pairs. get and post below are this with the
+      # method filled in.
       # @raise [UnknownAgentError] wenn Agent nicht in Config
       # @raise [UnreachableError]  wenn Verbindung scheitert
-      def get(agent_name, path)
-        response = client_for(agent_name).get(path)
+      def request(agent_name, path, method: 'GET', body: nil, headers: [])
+        response = send_request(agent_name, path, method, body, headers)
         Response.new(response.status, response.headers, response.read.to_s)
       rescue *NETWORK_ERRORS => e
         raise UnreachableError.new(agent_name, e.message)
       end
 
+      def get(agent_name, path)
+        request(agent_name, path)
+      end
+
       # POSTs body; milan hands it to the script on stdin.
-      # @raise [UnknownAgentError] wenn Agent nicht in Config
-      # @raise [UnreachableError]  wenn Verbindung scheitert
-      def post(agent_name, path, body, content_type: 'text/plain; charset=utf-8')
-        response = client_for(agent_name).post(path, [['content-type', content_type]], [body.to_s])
-        Response.new(response.status, response.headers, response.read.to_s)
-      rescue *NETWORK_ERRORS => e
-        raise UnreachableError.new(agent_name, e.message)
+      def post(agent_name, path, body, content_type: 'text/plain; charset=utf-8', headers: [])
+        request(agent_name, path, method: 'POST', body: body,
+                headers: [['content-type', content_type], *headers])
       end
 
       # get and post hand back whatever the agent answered, a 404 or 422
@@ -141,20 +180,61 @@ module Dylan
         checked(agent_name, post(agent_name, path, body, **options))
       end
 
-      # Streamt Body chunk-weise an den Block (low-level Variante).
-      def stream(agent_name, path)
-        response = client_for(agent_name).get(path)
-        if response.status == 200
-          begin
-            response.body.each { |chunk| yield chunk }
-          ensure
-            response.body.close rescue nil  # Milan-Verbindung sauber freigeben
-          end
-        else
-          raise UnreachableError.new(agent_name, "HTTP #{response.status}: #{response.read.to_s.strip}")
-        end
+      # ── Streams: the answer as it is produced ──────────────────────────────
+
+      # Opens a request and returns before the body has been read: a
+      # Milan::Stream with the agent's status and content type, whose pieces
+      # are read with `each`. The caller closes it (`close`), or uses `stream`
+      # or `pass_stream` below, which do.
+      # @raise [UnknownAgentError], [UnreachableError]
+      def open_stream(agent_name, path, method: 'GET', body: nil, headers: [])
+        response = send_request(agent_name, path, method, body, headers)
+        Stream.new(agent: agent_name, status: response.status,
+                   content_type: Array(response.headers['content-type']).first.to_s,
+                   chunks: response.body || [],
+                   on_close: -> { response.body&.close })
       rescue *NETWORK_ERRORS => e
         raise UnreachableError.new(agent_name, e.message)
+      end
+
+      # Streamt Body chunk-weise an den Block. Ein Status außer 200 zählt als
+      # nicht erreichbar, mit milans Meldung im Text.
+      def stream(agent_name, path, **options)
+        upstream = open_stream(agent_name, path, **options)
+        unless upstream.status == 200
+          raise UnreachableError.new(agent_name, "HTTP #{upstream.status}: #{upstream.read.strip}")
+        end
+
+        upstream.each { |chunk| yield chunk }
+      rescue *NETWORK_ERRORS => e
+        raise UnreachableError.new(agent_name, e.message)
+      ensure
+        upstream&.close   # Milan-Verbindung sauber freigeben
+      end
+
+      # A stream from an agent as a Dylan response, piece by piece, for a
+      # plugin that forwards one (milan-connect does). The agent's status is
+      # kept: the headers are waited for inside `call`, which is quick, since
+      # milan sends them as soon as the script has started. A refusal (404
+      # unknown script, 403, 500) is therefore a real status with milan's
+      # message, and only a running stream is answered outside the timeout.
+      #
+      # When the reader goes away, the connection to milan is closed; milan
+      # then lets the script finish as a background job.
+      def pass_stream(agent_name, path, **options)
+        upstream = open_stream(agent_name, path, **options)
+        unless upstream.status == 200
+          message = upstream.read.strip
+          upstream.close
+          return Dylan::Response.error(upstream.status, message)
+        end
+
+        Dylan::Response.stream(content_type: upstream.content_type,
+                               headers: { 'x-accel-buffering' => 'no' }) do |out|
+          upstream.each { |chunk| out.write(chunk) }
+        ensure
+          upstream.close
+        end
       end
 
       # Proxyt einen Milan-Stream in einen offenen SSE-Body. Fehler gehen
@@ -213,6 +293,13 @@ module Dylan
       end
 
       private
+
+      def send_request(agent_name, path, method, body, headers)
+        verb = method.to_s.upcase
+        raise ArgumentError, "Milan: unsupported method #{method}" unless METHODS.include?(verb)
+
+        client_for(agent_name).public_send(verb.downcase, path, headers, body.nil? ? nil : [body.to_s])
+      end
 
       def checked(agent_name, response)
         raise ErrorResponse.new(agent_name, response.status, response.body) unless response.ok?

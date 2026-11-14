@@ -226,6 +226,9 @@ end
 
 A script that runs longer than the timeout goes through
 [`Response.deferred` or `Response.sse_stream`](#work-that-outlives-the-timeout).
+To forward an agent's stream as it is, with its status and content type, use
+`Dylan::Milan.pass_stream(agent, path)`. `Dylan::Milan.request` is the general
+call for the methods beyond GET and POST (`method:`, `body:`, `headers:`).
 
 **Example using Dylan::HttpPool** (reverse-proxy a backend):
 ```ruby
@@ -843,7 +846,7 @@ dy.lan/
 │   ├── core/                       # essential Dylan features
 │   │   ├── 00-host-redirects.rb    # Reverse proxy + host-based redirects
 │   │   ├── 05-favicon.rb           # SVG favicon
-│   │   ├── 35-milan-connect.rb     # Milan-agent forwarding
+│   │   ├── 35-milan-connect.rb     # /<agent>/<path>: calls, POST bodies and streams to Milan
 │   │   ├── 50-simple-redirects.rb  # YAML-driven redirects
 │   │   ├── 55-stage.rb             # StageBase + all Stage logic
 │   │   ├── 60-jobs.rb              # /jobs/check: ntfy for finished Milan jobs
@@ -915,6 +918,7 @@ needs no server or container, only the gems from the `Gemfile` (`bundle install`
 ruby test/ansi_test.rb          # ANSI → HTML renderer
 ruby test/helpers_test.rb       # deferred/stream responses, get!/post!, within, the Milan double
 ruby test/jobs_test.rb          # job notifications: acknowledged only after the message is out
+ruby test/milan_connect_test.rb # /<agent>/<path>: methods, status, streams
 ruby test/panel_test.rb         # Stage panels, link grid, widget tiles (Milan stubbed)
 ruby test/router_test.rb        # routing, failure statuses, circuit breaker
 ruby test/sse_stream_test.rb    # SSE proxy error path reaches the browser
