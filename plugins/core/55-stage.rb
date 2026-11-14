@@ -288,8 +288,7 @@ class StageBase < Dylan::Plugin
       # message goes into the frame as a readable page, not as raw text.
       next body.write(frame_error_html(label, response.body.strip, reached: true)) unless response.ok?
 
-      html = response.body
-      body.write(html.gsub(%r{\b(src|href)="/notes/}) { %(#{$1}="#{prefix}/notes/) })
+      body.write(Dylan::Milan.prefix_notes_links(response.body, prefix))
     rescue => e
       body.write(frame_error_html(label, e.message))
     ensure

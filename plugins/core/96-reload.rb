@@ -26,7 +26,7 @@ class ReloadPlugin < Dylan::Plugin
       return Dylan::Response.error(403, 'Reload refused: request embedded by another site')
     end
 
-    format = parse_query(request)['format']
+    format = query_params(request)['format']
 
     Thread.new do
       sleep 0.5  # Response Zeit zu senden geben
@@ -46,14 +46,6 @@ class ReloadPlugin < Dylan::Plugin
   def embedded_by_another_site?(request)
     header = ->(name) { Array(request.headers[name]).flatten.join(',') }
     header.call('sec-fetch-site') == 'cross-site' && header.call('sec-fetch-mode') != 'navigate'
-  end
-
-  def parse_query(request)
-    query_string = request.path.split('?', 2)[1] || ''
-    query_string.split('&').each_with_object({}) do |pair, hash|
-      key, value = pair.split('=', 2)
-      hash[key] = value if key
-    end
   end
 
   def inline_html

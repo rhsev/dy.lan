@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Dylan 1.1 - Async HTTP Server
+# Dylan - Async HTTP Server
 # Supports parallel requests via Fibers
 
 require 'socket'
@@ -30,27 +30,12 @@ require_relative 'lib/ansi'
 PORT = ENV.fetch('PORT', 80).to_i
 PLUGIN_DIR = File.join(__dir__, 'plugins')
 
-# Check for ZJIT configuration
-runtime_config_path = File.join(__dir__, 'config', 'runtime.yaml')
-if File.exist?(runtime_config_path)
-  runtime_config = YAML.load_file(runtime_config_path) || {}  # leere Datei → nil
-  zjit_enabled = runtime_config.dig('zjit', 'enabled')
-
-  if zjit_enabled && !RubyVM::ZJIT.enabled?
-    puts "⚠️  ZJIT is enabled in runtime.yaml but not active"
-    puts "   Start Dylan with: RUBY_ZJIT=1 ruby server.rb"
-    puts "   Or use: ruby --zjit server.rb"
-  elsif RubyVM::ZJIT.enabled?
-    puts "⚡ ZJIT enabled (Zero-overhead JIT)"
-  end
-end
-
 # Initialize router with plugin directory (for hot-reload)
 router = Dylan::Router.new(PLUGIN_DIR)
 
 # Load plugins (sorted alphabetically)
 puts "=" * 60
-puts "Dylan 1.1 - Async Dynamic HTTP Router"
+puts "Dylan - Async Dynamic HTTP Router"
 puts "=" * 60
 
 if Dir.exist?(PLUGIN_DIR)

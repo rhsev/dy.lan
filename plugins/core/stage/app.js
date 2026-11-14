@@ -12,15 +12,13 @@ let activeStream = null;
    Desktop: one-shot on load + poll every 5 minutes + refresh after actions. */
 const IS_IPHONE = /iPhone/.test(navigator.userAgent);
 
-async function refreshAgentStatus() {
-  if (IS_IPHONE) return;
+async function fetchAgentStatus() {
   try {
     const res = await fetch(PREFIX + '/agents/status', { cache: 'no-store' });
     if (!res.ok) return;
     const status = await res.json();
     document.querySelectorAll('.agent-badge').forEach(badge => {
-      const name = badge.dataset.agent;
-      const s = status[name];
+      const s = status[badge.dataset.agent];
       badge.classList.remove('online', 'degraded', 'offline');
       if (s) badge.classList.add(s);
     });
@@ -29,21 +27,13 @@ async function refreshAgentStatus() {
   }
 }
 
+// After an action or a stream: desktop only.
+function refreshAgentStatus() {
+  if (!IS_IPHONE) fetchAgentStatus();
+}
+
 if (document.querySelector('.agent-badge')) {
-  // initial check on all devices
-  (async () => {
-    try {
-      const res = await fetch(PREFIX + '/agents/status', { cache: 'no-store' });
-      if (!res.ok) return;
-      const status = await res.json();
-      document.querySelectorAll('.agent-badge').forEach(badge => {
-        const s = status[badge.dataset.agent];
-        badge.classList.remove('online', 'degraded', 'offline');
-        if (s) badge.classList.add(s);
-      });
-    } catch (e) { /* leave badges as-is */ }
-  })();
-  // desktop only: poll every 5 minutes
+  fetchAgentStatus();                       // initial check on all devices
   if (!IS_IPHONE) setInterval(refreshAgentStatus, 5 * 60 * 1000);
 }
 
@@ -53,6 +43,7 @@ if (document.querySelector('.agent-badge')) {
    job log) keep polling while they're the active panel; loadPanel is a
    one-shot fetch for everything else. */
 let panelTimer = null;
+let panelTick = null;
 let lastPolledHtml = null;
 // Counts up whenever the panel area changes hands (another panel, an action,
 // a stream). A fetch that was started before the change compares its own
@@ -107,6 +98,9 @@ function startPanelPolling(id, seconds, alwaysRedraw, seedHtml = null) {
   lastPolledHtml = seedHtml;
   const epoch = panelEpoch;
   const tick = async () => {
+    // A tab nobody looks at does not poll; it catches up when it is shown
+    // again (visibilitychange below).
+    if (document.hidden) return;
     try {
       const { ok, html } = await fetchPanelFragment(id, 'no-cache');
       if (epoch !== panelEpoch) return;
@@ -139,7 +133,12 @@ function startPanelPolling(id, seconds, alwaysRedraw, seedHtml = null) {
   // Zeitstempel bei, auf den es bei einem Job-Log ankommt.
   if (!seedHtml) tick();
   panelTimer = setInterval(tick, seconds * 1000);
+  panelTick = tick;
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && panelTimer && panelTick) panelTick();
+});
 
 function openPanel(btn, push) {
   stopPanelPolling();

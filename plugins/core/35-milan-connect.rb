@@ -40,9 +40,7 @@ class MilanConnectPlugin < Dylan::Plugin
         # Skripte dürfen ganze Seiten liefern (z.B. das markbinder-Album).
         # Absolute Milan-Routen im Markup brauchen durch den Proxy das
         # Agent-Präfix, sonst laufen die Asset-Requests an Dylan ins Leere.
-        html = response.body.gsub(%r{\b(src|href)="/(notes/[^"]*)"}) do
-          "#{Regexp.last_match(1)}=\"/#{agent_name}/#{Regexp.last_match(2)}\""
-        end
+        html = Dylan::Milan.prefix_notes_links(response.body, "/#{agent_name}")
         Dylan::Response.html(html, status: response.status)
       elsif ct.empty? || ct.start_with?('text/')
         Dylan::Response.text(response.body.strip, status: response.status)

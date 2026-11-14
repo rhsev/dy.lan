@@ -89,6 +89,16 @@ module Dylan
       pattern.match(host) || pattern.match(path)
     end
 
+    # Query parameters of a request as a Hash. Dylan's request.path carries the
+    # query string. Values are returned as sent, not URL-decoded.
+    def query_params(request)
+      query_string = request.path.split('?', 2)[1] || ''
+      query_string.split('&').each_with_object({}) do |pair, hash|
+        key, value = pair.split('=', 2)
+        hash[key] = value if key
+      end
+    end
+
     # ─── Config-Hot-Reload ──────────────────────────────────────────────────
 
     # Letzter geladener mtime — Subclasses können das nutzen um abgeleitete

@@ -780,8 +780,7 @@ dy.lan/
 │   ├── crontab                     # Cron schedule (container-side)
 │   ├── manage.yaml                 # Stage config for /manage
 │   ├── milan.yaml                  # Milan agent registry (+ whoami_also_from)
-│   ├── redirects.yaml              # Simple redirects
-│   └── runtime.yaml                # ZJIT / Ruby::Box switches
+│   └── redirects.yaml              # Simple redirects
 │
 ├── scripts/
 │   ├── monitor.sh                  # Monitor cron job

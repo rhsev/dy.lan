@@ -140,6 +140,14 @@ module Dylan
         sse_body.write("event: done\ndata: \n\n")
       end
 
+      # A page from milan links its files as /notes/…, a route of milan's own.
+      # Behind Dylan they need the prefix under which Dylan forwards to that
+      # agent ("/mini", "/stage"), or the browser asks Dylan for a route it
+      # does not have.
+      def prefix_notes_links(html, prefix)
+        html.gsub(%r{\b(src|href)="/notes/}) { %(#{Regexp.last_match(1)}="#{prefix}/notes/) }
+      end
+
       # Erzwingt das nächste Mal Reload (für Tests / manuelles Reset).
       def reset!
         @config = nil

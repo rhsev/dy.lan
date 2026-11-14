@@ -85,7 +85,7 @@ docker logs dylan -f
 
 You should see:
 ```
-Dylan 1.1 - Async Dynamic HTTP Router
+Dylan - Async Dynamic HTTP Router
 ✅ Loading: 00-host-redirects.rb
 …
 Loaded 14/14 plugin file(s)

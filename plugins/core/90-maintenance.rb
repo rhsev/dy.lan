@@ -88,7 +88,7 @@ class MaintenancePlugin < Dylan::Plugin
   def handle_routes(request)
     return error_no_router unless @router
 
-    format = parse_query(request)['format']
+    format = query_params(request)['format']
     plugins = collect_plugins
 
     case format
@@ -150,7 +150,7 @@ class MaintenancePlugin < Dylan::Plugin
   def handle_test(request, host)
     return error_no_router unless @router
 
-    query  = parse_query(request)
+    query  = query_params(request)
     format = query['format']
 
     # Path kommt entweder als ?path=… oder als URL-Suffix /dylan/test/<path>.
@@ -222,7 +222,7 @@ class MaintenancePlugin < Dylan::Plugin
   def handle_stats(request)
     return error_no_router unless @router
 
-    format = parse_query(request)['format']
+    format = query_params(request)['format']
     stats  = collect_stats
 
     case format
@@ -281,14 +281,6 @@ class MaintenancePlugin < Dylan::Plugin
   end
 
   # ── Helpers ─────────────────────────────────────────────────────────────────
-
-  def parse_query(request)
-    query_string = request.path.split('?', 2)[1] || ''
-    query_string.split('&').each_with_object({}) do |pair, hash|
-      key, value = pair.split('=', 2)
-      hash[key] = value if key
-    end
-  end
 
   def format_duration(seconds)
     days    = (seconds / 86400).to_i

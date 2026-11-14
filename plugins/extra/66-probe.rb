@@ -22,15 +22,17 @@ require 'time'
 class ProbePlugin < Dylan::Plugin
   pattern(%r{^/probe$})
 
-  # Budget für alle Agents zusammen; pro Agent deutlich weniger, denn ein
-  # schlafender Mac lehnt nicht ab, er droppt still — ohne eigenes Timeout
-  # fräße ein Abwesender das ganze Plugin-Budget.
+  # Budget für das Plugin; pro Agent deutlich weniger, denn ein schlafender
+  # Mac lehnt nicht ab, er droppt still — ohne eigenes Timeout fräße ein
+  # Abwesender das ganze Plugin-Budget. Die Agents werden gleichzeitig gefragt.
   timeout(6.0)
   AGENT_TIMEOUT = 2
 
   def call(host, path, request)
     lines = ["# probe · #{Time.now.strftime('%d.%m. %H:%M:%S')}", '']
-    Dylan::Milan.agents.each_key { |name| lines << probe_line(name) }
+    # All agents at once: an absent one costs its own timeout, not everyone's.
+    Dylan::Milan.agents.keys.map { |name| Async { probe_line(name) } }
+                .each { |task| lines << task.wait }
     lines << nas_line
     lines << ''
     lines << '✅ meldet sich · 💤 abwesend/schläft (normal) · 🟥 antwortet, aber kaputt'
