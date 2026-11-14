@@ -49,7 +49,7 @@ class JobsPlugin < Dylan::Plugin
   def check_agent(agent)
     # The limit covers the question only. Notifying and acknowledging run
     # outside it: cut off between the two, a job would be announced twice.
-    jobs = Async::Task.current.with_timeout(AGENT_TIMEOUT) { pending(agent) }
+    jobs = within(AGENT_TIMEOUT) { pending(agent) }
     jobs.map { |job| report(agent, job) }
   rescue Async::TimeoutError
     ["#{agent}: no answer within #{AGENT_TIMEOUT}s"]
@@ -73,7 +73,7 @@ class JobsPlugin < Dylan::Plugin
   def agents = Dylan::Milan.agents.keys
 
   def pending(agent)
-    body = Dylan::Milan.get(agent, '/jobs/pending').body
+    body = Dylan::Milan.get!(agent, '/jobs/pending').body
     JSON.parse(body.empty? ? '[]' : body)
   end
 

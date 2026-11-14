@@ -173,11 +173,59 @@ Dylan ships several reusable libraries in `lib/` that plugins can compose:
 
 | Lib | Purpose |
 |---|---|
-| `Dylan::Response` | HTTP response builders (`text`, `html`, `json`, `redirect`, `sse`, `error`) |
+| `Dylan::Response` | HTTP response builders (`text`, `html`, `json`, `redirect`, `error`), and `deferred`, `stream`, `sse_stream` for work that takes longer than the plugin timeout. |
 | `Dylan::HttpPool` | Reusable `Async::HTTP::Client` pool. Single source for HTTP connection caching. |
-| `Dylan::Milan` | Milan agent registry + cached HTTP clients. `get`, `stream`, `proxy_sse`, error-mapping `rescued` helper. Only relevant when you talk to a Milan companion server. |
+| `Dylan::Milan` | Milan agent registry + cached HTTP clients. `get!`, `post!`, `stream`, `proxy_sse`, error-mapping `rescued` helper. Only relevant when you talk to a Milan companion server. See [Talking to Milan](#talking-to-milan). |
+| `Dylan::MilanDouble` | Milan for tests: canned answers and a record of the calls. See [Testing a plugin that talks to Milan](#testing-a-plugin-that-talks-to-milan). |
 | `Dylan::StaticAssets` | Static file server with ETag + mtime-based hot-reload. For plugins that ship HTML/CSS/JS bundles. |
 | `Dylan::Ansi` | ANSI → HTML for terminal output (`Dylan::Ansi.to_html`). SGR colours, bold, `\r` line rewrites; everything else stripped. |
+
+Every plugin also inherits two small helpers from `Dylan::Plugin`:
+`query_params(request)` returns the query string as a Hash, and
+`within(seconds) { ... }` puts a time limit on one step inside `call`.
+
+### Talking to Milan
+
+`get!` and `post!` raise when the agent answers with an error status, for
+example 422 for a failed script or 404 for an unknown one. Inside `rescued`
+every failure becomes the fitting response: the agent's own status and message,
+503 for an agent that is unreachable or not configured, 504 when the plugin's
+timeout ran out.
+
+```ruby
+class DiskPlugin < Dylan::Plugin
+  pattern(%r{^/disk$})
+  timeout(5)
+
+  def call(host, path, request)
+    Dylan::Milan.rescued('mini', label: 'Disk') do
+      Dylan::Response.text(Dylan::Milan.get!('mini', '/disk-usage').body)
+    end
+  end
+end
+```
+
+`get` and `post` without the `!` return the answer whatever its status. Use
+them when the status itself is what you want to read or pass on.
+
+Asking several agents: give each one its own limit with `within`, so that one
+absent agent does not use up the time of the others, and ask them at once:
+
+```ruby
+def call(host, path, request)
+  lines = Dylan::Milan.agents.keys.map { |name| Async { line_for(name) } }.map(&:wait)
+  Dylan::Response.text(lines.join("\n"))
+end
+
+def line_for(name)
+  "#{name}: #{within(2) { Dylan::Milan.get!(name, '/uptime').body.strip }}"
+rescue Async::TimeoutError, Dylan::Milan::UnreachableError
+  "#{name}: no answer"
+end
+```
+
+A script that runs longer than the timeout goes through
+[`Response.deferred` or `Response.sse_stream`](#work-that-outlives-the-timeout).
 
 **Example using Dylan::HttpPool** (reverse-proxy a backend):
 ```ruby
@@ -537,26 +585,57 @@ Dylan::Response.text("Hello World")
 Dylan::Response.text("Created", status: 201)
 ```
 
-### SSE Streaming
+### Work that outlives the timeout
 
-For plugins that stream output to the browser via Server-Sent Events:
+The router cuts `call` off when the plugin's timeout runs out (0.5 s unless
+the plugin sets its own). Work that can take longer, such as a script on a
+Milan agent or a slow backend, does not belong inside `call`. Three helpers
+return the response at once and produce its content afterwards, outside the
+timeout. They close the body correctly and deliver a failure to the reader.
+
+One piece of content, produced later. The block returns it:
 
 ```ruby
 def call(host, path, request)
-  Dylan::Response.sse do |body|
-    Async do
-      3.times do |i|
-        body.write("data: line #{i}\n\n")
-        sleep(1)
-      end
-      body.write("event: done\ndata: \n\n")
-      body.close
-    end
+  Dylan::Response.deferred(on_error: ->(e) { "<p>#{CGI.escape_html(e.message)}</p>" }) do
+    Dylan::Milan.get!('mini', '/album/urlaub').body
   end
 end
 ```
 
-The block must start an `Async` task and return immediately. The response streams as chunks are written to `body`. Close `body` when done.
+Content in pieces. The block writes to the body, and the response ends when
+the block ends:
+
+```ruby
+def call(host, path, request)
+  Dylan::Response.stream(content_type: 'text/plain; charset=UTF-8') do |body|
+    Dylan::Milan.stream('mini', '/stream/backup') { |chunk| body.write(chunk) }
+  end
+end
+```
+
+Server-Sent Events. A failure goes out as a `stream_error` event followed by
+`done`, the two events the Stage pad understands:
+
+```ruby
+def call(host, path, request)
+  Dylan::Response.sse_stream do |body|
+    3.times do |i|
+      body.write("data: line #{i}\n\n")
+      sleep(1)
+    end
+    body.write("event: done\ndata: \n\n")
+  end
+end
+```
+
+The status of such a response is 200 before the content exists. A failure
+therefore arrives as content (`on_error`) and not as a 502.
+
+`Dylan::Response.sse` is the manual form: it yields the body, and the plugin
+starts the `Async` task itself and ends it with `body.close_write`. Do not use
+`body.close` there. It discards what the reader has not fetched yet, which is
+the last event written.
 
 ### Error Responses
 
@@ -663,7 +742,17 @@ end
 
 ### Query Parameters
 
-Parse query strings manually:
+`query_params(request)` returns the query string as a Hash. Values come back
+as sent, without URL decoding:
+
+```ruby
+def call(host, path, request)
+  format = query_params(request)['format']   # /things?format=json
+  # ...
+end
+```
+
+To get decoded values, parse the query string yourself:
 
 ```ruby
 require 'uri'
@@ -824,6 +913,8 @@ needs no server or container, only the gems from the `Gemfile` (`bundle install`
 
 ```bash
 ruby test/ansi_test.rb          # ANSI → HTML renderer
+ruby test/helpers_test.rb       # deferred/stream responses, get!/post!, within, the Milan double
+ruby test/jobs_test.rb          # job notifications: acknowledged only after the message is out
 ruby test/panel_test.rb         # Stage panels, link grid, widget tiles (Milan stubbed)
 ruby test/router_test.rb        # routing, failure statuses, circuit breaker
 ruby test/sse_stream_test.rb    # SSE proxy error path reaches the browser
@@ -837,6 +928,42 @@ Without a local Ruby 4, run them in the image:
 docker compose run --rm --no-deps -v "$PWD/test:/app/test:ro" dylan \
   sh -c 'for f in test/*_test.rb; do ruby "$f"; done'
 ```
+
+### Testing a plugin that talks to Milan
+
+`Dylan::MilanDouble` stands in for Milan. The test says what Milan answers and
+reads back what the plugin asked for. No agent and no network are involved.
+
+```ruby
+require 'minitest/autorun'
+require_relative '../lib/plugin'
+require_relative '../lib/response'
+require_relative '../lib/milan_double'
+require_relative '../plugins/custom/70-disk'
+
+class DiskTest < Minitest::Test
+  def setup    = @milan = Dylan::MilanDouble.use
+  def teardown = Dylan::MilanDouble.reset
+
+  def test_passes_the_agents_error_on
+    @milan.respond(path: '/disk-usage', status: 422, body: 'df failed')
+    response = DiskPlugin.new.call('dy.lan', '/disk', nil)
+
+    assert_equal 422, response.status
+    assert_equal [[:get, 'mini', '/disk-usage']], @milan.calls
+  end
+end
+```
+
+`respond` takes `path:` (a String or a Regexp), `agent:`, `status:`, `body:`
+(anything that is not a String is sent as JSON), `error:` (an exception to
+raise), `delay:` (seconds) and `chunks:` (for `stream`). The rule added last
+wins. A request that no rule matches gets an empty 200. The default agents are
+`mini` and `book`; `MilanDouble.use(agents: { ... })` sets others.
+
+Use the double and do not prepend a stub of your own to `Dylan::Milan`. CI runs
+all test files in one process, and stubs from different files get in each
+other's way there.
 
 ### Manual Testing
 

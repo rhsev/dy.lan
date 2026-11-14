@@ -13,18 +13,9 @@ require_relative '../lib/plugin'
 require_relative '../lib/response'
 require_relative '../lib/static_assets'
 require_relative '../lib/milan'
+require_relative '../lib/milan_double'
 require_relative '../lib/ansi'
 require_relative '../plugins/core/55-stage'
-
-# Milan-Stub: liefert, was der Test vorher hingelegt hat.
-module MilanStub
-  attr_accessor :stub_body
-
-  def get(_agent, _path)
-    Dylan::Milan::Response.new(200, {}, stub_body.to_s)
-  end
-end
-Dylan::Milan.singleton_class.prepend(MilanStub)
 
 # Stage-Instanz mit Config aus dem Test statt aus einer YAML-Datei.
 class TestStage < StageBase
@@ -44,7 +35,12 @@ FakeRequest = Struct.new(:headers)
 
 class PanelTest < Minitest::Test
   def setup
-    @now = Time.now.to_i
+    @now   = Time.now.to_i
+    @milan = Dylan::MilanDouble.use
+  end
+
+  def teardown
+    Dylan::MilanDouble.reset
   end
 
   def stage(sections, extra = {})
@@ -57,7 +53,7 @@ class PanelTest < Minitest::Test
 
   # Ruft /widgets auf und gibt [status, headers, body] zurück.
   def get_widgets(stg, widgets, headers = {}, host = nil)
-    Dylan::Milan.stub_body = JSON.generate(widgets)
+    @milan.respond(body: JSON.generate(widgets))
     response = stg.send(:handle_widgets, FakeRequest.new(headers), host)
     body = +''
     while (chunk = response.body&.read)
@@ -238,18 +234,10 @@ class PanelTest < Minitest::Test
 
   # Ein Board-Refresh ist ein Request an Milan, egal wie viele Kacheln.
   def test_one_milan_request_per_refresh
-    calls = 0
-    Dylan::Milan.singleton_class.prepend(Module.new do
-      define_method(:get) do |agent, path|
-        calls += 1
-        super(agent, path)
-      end
-    end)
-
     sections = [{ 'title' => 'Alle',
                   'buttons' => %w[a b c].map { |t| { 'id' => t, 'type' => 'widget', 'target' => t } } }]
     get_widgets(stage(sections), %w[a b c].map { |t| widget(t, text: t) })
-    assert_equal 1, calls
+    assert_equal [[:get, 'mini', '/widgets']], @milan.calls
   end
 
   # ── ETag ───────────────────────────────────────────────────────────────────
@@ -342,19 +330,19 @@ class PanelTest < Minitest::Test
   end
 
   def test_panel_widget_dispatches_to_widget_board
-    Dylan::Milan.stub_body = JSON.generate([])
+    @milan.respond(body: JSON.generate([]))
     response = stage(panel_sections).send(:handle_panel, 'board', FakeRequest.new({}))
     assert_equal 200, response.status
   end
 
   def test_panel_jobs_dispatches_to_jobs_fragment
-    Dylan::Milan.stub_body = JSON.generate([])  # /jobs/all pro Agent — leere Liste reicht für den Dispatch-Test
+    @milan.respond(body: JSON.generate([]))  # /jobs/all pro Agent — leere Liste reicht für den Dispatch-Test
     response = stage(panel_sections).send(:handle_panel, 'jobs', FakeRequest.new({}))
     assert_equal 200, response.status
   end
 
   def test_panel_notes_dispatches_to_notes_panel
-    Dylan::Milan.stub_body = JSON.generate(['a.md', 'b.md'])
+    @milan.respond(body: JSON.generate(['a.md', 'b.md']))
     response = stage(panel_sections).send(:handle_panel, 'notes', FakeRequest.new({}))
     body = response.body.read
     assert_includes body, 'data-file="a.md"'
@@ -364,7 +352,7 @@ class PanelTest < Minitest::Test
   # Dieselbe URL liefert je nach X-Requested-With ein Fragment oder die ganze
   # Seite — ohne Vary reicht ein Cache irgendwann das eine fürs andere durch.
   def test_panel_answers_vary_on_every_branch
-    Dylan::Milan.stub_body = JSON.generate([])
+    @milan.respond(body: JSON.generate([]))
     stg = stage(panel_sections)
 
     %w[links board jobs notes].each do |id|

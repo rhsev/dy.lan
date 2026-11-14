@@ -13,21 +13,9 @@ require_relative '../lib/plugin'
 require_relative '../lib/response'
 require_relative '../lib/static_assets'
 require_relative '../lib/milan'
+require_relative '../lib/milan_double'
 require_relative '../lib/ansi'
 require_relative '../plugins/core/55-stage'
-
-# Milan, der so lange braucht, wie der Test es verlangt.
-module SlowMilanStub
-  attr_accessor :stub_delay, :stub_body, :stub_error
-
-  def get(_agent, _path)
-    Async::Task.current.sleep(stub_delay.to_f) if stub_delay
-    raise stub_error if stub_error
-
-    Dylan::Milan::Response.new(200, {}, stub_body.to_s)
-  end
-end
-Dylan::Milan.singleton_class.prepend(SlowMilanStub)
 
 class FrameStage < StageBase
   pattern    %r{^/stage}
@@ -42,17 +30,15 @@ end
 class StreamFrameTest < Minitest::Test
   BUDGET = 0.4   # der 5s-Wrapper des Routers, nur schneller
 
+  ALBUM = '<div class="album"></div>'
+
   def setup
-    Dylan::Milan.stub_delay = nil
-    Dylan::Milan.stub_error = nil
-    Dylan::Milan.stub_body  = '<div class="album"></div>'
+    @milan = Dylan::MilanDouble.use
+    @milan.respond(body: ALBUM)
   end
 
-  # The stub stays prepended for the whole process, so other test files in the
-  # same run see it too. Leave no delay or error behind for them.
   def teardown
-    Dylan::Milan.stub_delay = nil
-    Dylan::Milan.stub_error = nil
+    Dylan::MilanDouble.reset
   end
 
   # Ruft die Route so auf, wie der Router es tut: call unter Timeout, Body erst
@@ -76,7 +62,7 @@ class StreamFrameTest < Minitest::Test
   # Thumbnails, das dauert laenger als das Budget. Vorher kam hier
   # "Album error: execution expired".
   def test_slow_album_still_arrives
-    Dylan::Milan.stub_delay = BUDGET * 3
+    @milan.respond(body: ALBUM, delay: BUDGET * 3)
     arrived, body = through_router('/stage/album/urlaub')
 
     assert arrived, 'die Antwort wurde vom Timeout des Routers gekillt'
@@ -85,7 +71,7 @@ class StreamFrameTest < Minitest::Test
 
   # Bildpfade muessen weiter auf den Instance-Prefix gezogen werden.
   def test_asset_paths_get_the_prefix
-    Dylan::Milan.stub_body = %(<img src="/notes/alben/assets/images/a.jpg">)
+    @milan.respond(body: %(<img src="/notes/alben/assets/images/a.jpg">))
     _, body = through_router('/stage/album/urlaub')
 
     assert_includes body, 'src="/stage/notes/alben/assets/images/a.jpg"'
@@ -103,7 +89,7 @@ class StreamFrameTest < Minitest::Test
   # Der Status steht, bevor der Fehler bekannt ist — also gehoert die Meldung
   # in den Body, sonst zeigt das iframe eine leere Flaeche.
   def test_a_failing_milan_becomes_a_readable_frame
-    Dylan::Milan.stub_error = Dylan::Milan::UnreachableError.new('mini', 'connection refused')
+    @milan.respond(error: Dylan::Milan::UnreachableError.new('mini', 'connection refused'))
     arrived, body = through_router('/stage/album/urlaub')
 
     assert arrived

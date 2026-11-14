@@ -14,20 +14,9 @@ require_relative '../lib/plugin'
 require_relative '../lib/response'
 require_relative '../lib/static_assets'
 require_relative '../lib/milan'
+require_relative '../lib/milan_double'
 require_relative '../lib/ansi'
 require_relative '../plugins/core/55-stage'
-
-# Milan, der entweder Chunks liefert oder beim Verbinden scheitert.
-module StreamStub
-  attr_accessor :stub_chunks, :stub_error
-
-  def stream(_agent, _path)
-    raise stub_error if stub_error
-
-    Array(stub_chunks).each { |c| yield c }
-  end
-end
-Dylan::Milan.singleton_class.prepend(StreamStub)
 
 class SseStage < StageBase
   pattern    %r{^/stage}
@@ -41,8 +30,11 @@ end
 
 class SseStreamTest < Minitest::Test
   def setup
-    Dylan::Milan.stub_chunks = nil
-    Dylan::Milan.stub_error  = nil
+    @milan = Dylan::MilanDouble.use
+  end
+
+  def teardown
+    Dylan::MilanDouble.reset
   end
 
   def run_stream
@@ -61,7 +53,7 @@ class SseStreamTest < Minitest::Test
   # Der Fall, der stumm blieb: milan nicht erreichbar. Die Meldung muss beim
   # Leser ankommen, sonst zeigt das Pad einen erfolgreichen Lauf an.
   def test_a_failing_stream_delivers_its_error
-    Dylan::Milan.stub_error = Dylan::Milan::UnreachableError.new('mini', 'connection refused')
+    @milan.respond(error: Dylan::Milan::UnreachableError.new('mini', 'connection refused'))
     body = run_stream
 
     assert_includes body, 'event: stream_error'
@@ -71,14 +63,14 @@ class SseStreamTest < Minitest::Test
   # done ist das Ereignis unmittelbar vor dem Schliessen — der empfindlichste
   # Chunk ueberhaupt.
   def test_the_final_done_event_survives
-    Dylan::Milan.stub_error = Dylan::Milan::UnreachableError.new('mini', 'nope')
+    @milan.respond(error: Dylan::Milan::UnreachableError.new('mini', 'nope'))
 
     assert_includes run_stream, 'event: done'
   end
 
   # Und der Normalfall reicht weiter durch, ohne dass der letzte Chunk fehlt.
   def test_chunks_pass_through_including_the_last
-    Dylan::Milan.stub_chunks = ["data: eins\n\n", "data: zwei\n\n", "data: letzte\n\n"]
+    @milan.respond(chunks: ["data: eins\n\n", "data: zwei\n\n", "data: letzte\n\n"])
     body = run_stream
 
     assert_includes body, 'data: eins'

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'yaml'
+require 'async'
 
 module Dylan
   # Base class for all Dylan plugins
@@ -87,6 +88,17 @@ module Dylan
 
     def match?(host, path)
       pattern.match(host) || pattern.match(path)
+    end
+
+    # A time limit for one step inside `call`, shorter than the plugin's own
+    # budget: one slow agent of several, a lookup with a cached fallback.
+    # Raises Async::TimeoutError when it runs out. Outside a reactor (a plain
+    # unit test) the block simply runs.
+    #
+    #   body = within(2) { Dylan::Milan.get!(name, '/status').body }
+    def within(seconds, &block)
+      task = Async::Task.current?
+      task ? task.with_timeout(seconds, &block) : yield
     end
 
     # Query parameters of a request as a Hash. Dylan's request.path carries the

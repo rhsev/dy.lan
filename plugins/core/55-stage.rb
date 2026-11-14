@@ -187,17 +187,9 @@ class StageBase < Dylan::Plugin
   # the browser (encodeURIComponent). We forward them to Milan as-is — re-encoding
   # would turn "%20" into "%2520" and make files with spaces unreachable.
 
-  # milan answered, but not with what was asked for (unknown source, missing
-  # file, apex failing). Its status and message go out unchanged — a 200 around
-  # an error text would be rendered as if it were the note.
-  def milan_failure(response)
-    Dylan::Response.error(response.status, response.body.strip)
-  end
-
   def handle_note_list(source_id)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
-      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}")
-      next milan_failure(response) unless response.ok?
+      response = Dylan::Milan.get!(notes_agent, "/notes/#{source_id}")
       Dylan::Response.json(JSON.parse(response.body.empty? ? '[]' : response.body))
     end
   end
@@ -205,8 +197,7 @@ class StageBase < Dylan::Plugin
   def handle_note_render(source_id, filename)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
       name = File.basename(filename)  # blockt Path-Traversal in der Datei-Komponente
-      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}/#{name}")
-      next milan_failure(response) unless response.ok?
+      response = Dylan::Milan.get!(notes_agent, "/notes/#{source_id}/#{name}")
 
       # Rewrite relative asset paths so browser fetches via Dylan (instance-aware)
       prefix = self.class.url_prefix
@@ -220,8 +211,7 @@ class StageBase < Dylan::Plugin
 
   def handle_note_asset(source_id, asset_path)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
-      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}/assets/#{asset_path}")
-      next milan_failure(response) unless response.ok?
+      response = Dylan::Milan.get!(notes_agent, "/notes/#{source_id}/assets/#{asset_path}")
       ct   = response.headers['content-type'] || 'application/octet-stream'
       body = Protocol::HTTP::Body::Buffered.wrap(response.body)
       Async::HTTP::Protocol::Response[200, { 'content-type' => ct }, body]
@@ -234,8 +224,7 @@ class StageBase < Dylan::Plugin
   # of "list, then render" over two.
   def render_notes_panel(source_id)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
-      response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}")
-      next milan_failure(response) unless response.ok?
+      response = Dylan::Milan.get!(notes_agent, "/notes/#{source_id}")
       files    = JSON.parse(response.body.empty? ? '[]' : response.body)
       Dylan::Response.html(notes_panel_html(files, source_id))
     end
@@ -266,43 +255,23 @@ class StageBase < Dylan::Plugin
     stream_milan_page("/album/#{binder}", label: 'Album')
   end
 
-  # The album route proxies a *script run*, not a lookup: `register album`
-  # renders thumbnails the first time an album is opened, which can outlast the
-  # stage's 5s budget, and the router's abort surfaced as "Album error:
-  # execution expired" — a milan error for a deadline milan never saw.
-  #
-  # Streaming takes this route out of the budget altogether: `call`
-  # returns the moment the body exists, and the body fills afterwards — the same
-  # escape the SSE proxy already uses. The panel handlers stay inside the budget
-  # where they belong; only the iframe documents move.
-  #
-  # The cost is that the status is committed before the fetch, so a failure has
-  # to arrive as a message inside the frame. In an iframe that is the better
-  # trade anyway: a 502 renders as a blank panel, a sentence does not.
+  # The album route proxies a *script run*, not a lookup: album-kit draws an
+  # album the first time it is opened, which can outlast the stage's budget.
+  # Response.deferred returns at once and fetches afterwards; a failure then
+  # arrives as a readable page inside the frame, where a 502 would render as a
+  # blank panel.
   def stream_milan_page(path, label:)
     prefix = self.class.url_prefix
-    body   = Protocol::HTTP::Body::Writable.new
-
-    Async do
-      response = Dylan::Milan.get(notes_agent, path)
-      # milan answered with an error (script missing, render failed): its
-      # message goes into the frame as a readable page, not as raw text.
-      next body.write(frame_error_html(label, response.body.strip, reached: true)) unless response.ok?
-
-      body.write(Dylan::Milan.prefix_notes_links(response.body, prefix))
-    rescue => e
-      body.write(frame_error_html(label, e.message))
-    ensure
-      # close_write, nicht close: `close` macht `@queue.clear` und wirft damit
-      # genau die Chunks weg, die der Leser noch nicht abgeholt hat — hier also
-      # die ganze Seite, weil sie in einem Stück geschrieben wird.
-      body.close_write
+    failed = lambda do |e|
+      # milan answered with an error of its own (script missing, render
+      # failed), or could not be reached at all.
+      answered = e.is_a?(Dylan::Milan::ErrorResponse)
+      frame_error_html(label, answered ? e.body.strip : e.message, reached: answered)
     end
 
-    Async::HTTP::Protocol::Response[200,
-      { 'content-type'  => 'text/html; charset=UTF-8',
-        'cache-control' => 'no-cache' },
-      body]
+    Dylan::Response.deferred(on_error: failed) do
+      Dylan::Milan.prefix_notes_links(Dylan::Milan.get!(notes_agent, path).body, prefix)
+    end
   end
 
   # Readable inside the panel, in the panel's own colours, and without a
@@ -408,20 +377,10 @@ class StageBase < Dylan::Plugin
     agent_name = url_parts[1].to_s
     milan_path = url_parts[2] ? "/#{url_parts[2]}" : '/'
 
-    # Errors (including unknown agent) flow through the stream_error event;
-    # app.js catches them and displays the message in the output frame.
-    #
-    # close_write, not close: `write` does not yield, so the producer runs from
-    # its last write straight into this ensure — and `close` clears the queue
-    # before the reader has been anywhere near it. proxy_sse writes stream_error
-    # and done back to back, so both used to be discarded, the browser saw a
-    # bare EOF, and app.js reported a failed stream as a clean finish.
-    Dylan::Response.sse do |body|
-      Async do
-        Dylan::Milan.proxy_sse(agent_name, milan_path, body)
-      ensure
-        body.close_write
-      end
+    # Errors (including unknown agent) arrive as a stream_error event;
+    # app.js shows the message in the output frame.
+    Dylan::Response.sse_stream do |body|
+      Dylan::Milan.proxy_sse(agent_name, milan_path, body)
     end
   end
 
@@ -457,7 +416,7 @@ class StageBase < Dylan::Plugin
 
   def handle_widgets(request, host = nil)
     Dylan::Milan.rescued(widget_agent, label: 'Widgets') do
-      body    = Dylan::Milan.get(widget_agent, '/widgets').body
+      body    = Dylan::Milan.get!(widget_agent, '/widgets').body
       widgets = JSON.parse(body.empty? ? '[]' : body)
       widgets = [] unless widgets.is_a?(Array)
 

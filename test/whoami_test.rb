@@ -10,15 +10,8 @@ require 'minitest/autorun'
 require_relative '../lib/plugin'
 require_relative '../lib/response'
 require_relative '../lib/milan'
+require_relative '../lib/milan_double'
 require_relative '../plugins/core/95-whoami'
-
-# Agents from the test instead of config/milan.yaml.
-module AgentsStub
-  attr_accessor :stub_agents
-
-  def agents = stub_agents || super
-end
-Dylan::Milan.singleton_class.prepend(AgentsStub)
 
 WhoamiAddress = Struct.new(:ip_address)
 WhoamiRequest = Struct.new(:remote_address)
@@ -38,11 +31,11 @@ class WhoamiTest < Minitest::Test
   BOOK = '192.168.1.11'
 
   def setup
-    Dylan::Milan.stub_agents = { 'mini' => "http://#{MINI}:8080", 'book' => "http://#{BOOK}:8080" }
+    Dylan::MilanDouble.use(agents: { 'mini' => "http://#{MINI}:8080", 'book' => "http://#{BOOK}:8080" })
   end
 
   def teardown
-    Dylan::Milan.stub_agents = nil
+    Dylan::MilanDouble.reset
   end
 
   # Returns [status, body].
@@ -103,7 +96,7 @@ class WhoamiTest < Minitest::Test
   # milan.yaml may list an agent by name; the claim is checked against what
   # the name resolves to. localhost stands in for a LAN name here.
   def test_agent_registered_by_host_name
-    Dylan::Milan.stub_agents = { 'mini' => 'http://localhost:8080', 'book' => "http://#{BOOK}:8080" }
+    Dylan::MilanDouble.use(agents: { 'mini' => 'http://localhost:8080', 'book' => "http://#{BOOK}:8080" })
     assert_equal [200, 'mini (127.0.0.1)'], whoami('/whoami?name=mini', from: '127.0.0.1')
     assert_equal [200, 'mini (127.0.0.1)'], whoami('/whoami', from: '127.0.0.1')
     status, body = whoami('/whoami?name=mini', from: BOOK)
@@ -112,7 +105,7 @@ class WhoamiTest < Minitest::Test
   end
 
   def test_agent_name_that_does_not_resolve
-    Dylan::Milan.stub_agents = { 'mini' => 'http://no-such-host.invalid:8080' }
+    Dylan::MilanDouble.use(agents: { 'mini' => 'http://no-such-host.invalid:8080' })
     assert_equal [409, "mini is registered at no-such-host.invalid (does not resolve) but called from #{MINI}"],
                  whoami('/whoami?name=mini', from: MINI)
   end

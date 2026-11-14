@@ -19,12 +19,22 @@ module Dylan
   #   Dylan::Milan.agents                           # => { "mini" => "...", "book" => "..." }
   #   Dylan::Milan.agent_url("mini")                # => "http://..."
   #   Dylan::Milan.enabled?                         # => true/false
-  #   Dylan::Milan.get(agent, path)                 # => Milan::Response (body in memory)
-  #   Dylan::Milan.post(agent, path, body)          # => Milan::Response, body goes to the script's stdin
+  #   Dylan::Milan.get!(agent, path)                # => Milan::Response (body in memory); raises on non-2xx
+  #   Dylan::Milan.post!(agent, path, body)         # => same; the body goes to the script's stdin
+  #   Dylan::Milan.get / .post                      # => same without the check: the status is yours to read
   #   Dylan::Milan.stream(agent, path) { |chunk| }  # => yields raw body chunks
   module Milan
     CONFIG_PATH = File.join(__dir__, '..', 'config', 'milan.yaml')
     CONFIG_CHECK_INTERVAL = 10  # Sekunden
+
+    # What a connection to an agent can fail with. All of it means the same to
+    # a plugin: the agent is not there. The list used to stop after the first
+    # two, and a Mac that was switched off (EHOSTDOWN) came through as a raw
+    # exception and a 500.
+    NETWORK_ERRORS = [
+      Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::EHOSTDOWN, Errno::ENETUNREACH,
+      Errno::ETIMEDOUT, Errno::ECONNRESET, Errno::EPIPE, SocketError, EOFError
+    ].freeze
 
     class UnreachableError < StandardError
       def initialize(agent, msg = nil)
@@ -34,6 +44,19 @@ module Dylan
 
     class UnknownAgentError < StandardError
       def initialize(agent) = super("Unknown Milan agent: #{agent}")
+    end
+
+    # The agent answered, but not with a 2xx: script failed (422), unknown
+    # script or note (404), blocked (403). Raised by get!/post!.
+    class ErrorResponse < StandardError
+      attr_reader :agent, :status, :body
+
+      def initialize(agent, status, body)
+        @agent  = agent
+        @status = status
+        @body   = body.to_s
+        super("Milan agent '#{agent}' answered #{status}: #{@body.strip[0, 200]}")
+      end
     end
 
     Response = Struct.new(:status, :headers, :body) do
@@ -57,6 +80,9 @@ module Dylan
         Dylan::Response.error(503, "#{label} agent not configured: #{agent_name}")
       rescue UnreachableError
         Dylan::Response.error(503, "#{label} '#{agent_name}' unreachable")
+      # The agent's own verdict, from get!/post!: its status and its words.
+      rescue ErrorResponse => e
+        Dylan::Response.error(e.status, e.body.strip)
       # The router aborts plugin.call when the plugin's time budget runs out
       # (lib/router.rb), and Async::TimeoutError is a StandardError — so it used
       # to land in the generic branch below and come out as
@@ -88,7 +114,7 @@ module Dylan
       def get(agent_name, path)
         response = client_for(agent_name).get(path)
         Response.new(response.status, response.headers, response.read.to_s)
-      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
+      rescue *NETWORK_ERRORS => e
         raise UnreachableError.new(agent_name, e.message)
       end
 
@@ -98,8 +124,21 @@ module Dylan
       def post(agent_name, path, body, content_type: 'text/plain; charset=utf-8')
         response = client_for(agent_name).post(path, [['content-type', content_type]], [body.to_s])
         Response.new(response.status, response.headers, response.read.to_s)
-      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
+      rescue *NETWORK_ERRORS => e
         raise UnreachableError.new(agent_name, e.message)
+      end
+
+      # get and post hand back whatever the agent answered, a 404 or 422
+      # included, and a caller that forgets `ok?` passes an error text on as if
+      # it were the result. These two raise ErrorResponse instead; inside
+      # `rescued` that becomes a response with the agent's status and message.
+      # Use them unless the status itself is what you are after.
+      def get!(agent_name, path)
+        checked(agent_name, get(agent_name, path))
+      end
+
+      def post!(agent_name, path, body, **options)
+        checked(agent_name, post(agent_name, path, body, **options))
       end
 
       # Streamt Body chunk-weise an den Block (low-level Variante).
@@ -114,7 +153,7 @@ module Dylan
         else
           raise UnreachableError.new(agent_name, "HTTP #{response.status}: #{response.read.to_s.strip}")
         end
-      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
+      rescue *NETWORK_ERRORS => e
         raise UnreachableError.new(agent_name, e.message)
       end
 
@@ -122,17 +161,10 @@ module Dylan
       # als 'stream_error'-Event in den Stream (nicht als HTTP-Status, weil
       # die SSE-Response schon offen ist). Markiert das Ende mit 'done'.
       #
-      # Caller behält Verantwortung für den Abschluss — via `ensure body.close_write`.
-      # NICHT `close`: das leert die Queue und verwirft die beiden Ereignisse,
-      # die diese Methode im Fehlerfall gerade geschrieben hat.
+      # Zusammen mit Dylan::Response.sse_stream, das Task und Abschluss
+      # übernimmt:
       #
-      #   Dylan::Response.sse do |body|
-      #     Async do
-      #       Dylan::Milan.proxy_sse(agent, path, body)
-      #     ensure
-      #       body.close_write
-      #     end
-      #   end
+      #   Dylan::Response.sse_stream { |body| Dylan::Milan.proxy_sse(agent, path, body) }
       def proxy_sse(agent_name, path, sse_body)
         stream(agent_name, path) { |chunk| sse_body.write(chunk) }
       rescue => e
@@ -181,6 +213,12 @@ module Dylan
       end
 
       private
+
+      def checked(agent_name, response)
+        raise ErrorResponse.new(agent_name, response.status, response.body) unless response.ok?
+
+        response
+      end
 
       def check_agent_health(name)
         response = Async::Task.current.with_timeout(HEALTH_TIMEOUT) { get(name, '/health') }

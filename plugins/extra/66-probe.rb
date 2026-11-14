@@ -82,9 +82,7 @@ class ProbePlugin < Dylan::Plugin
   end
 
   def probe_line(name)
-    body = Async::Task.current.with_timeout(AGENT_TIMEOUT) do
-      Dylan::Milan.get(name, '/ops-book').body
-    end
+    body = within(AGENT_TIMEOUT) { Dylan::Milan.get(name, '/ops-book').body }
     facts = body.to_s.lines.map(&:strip).reject(&:empty?)
     return "✅ #{name} — #{facts.drop(1).join(' · ')}" if facts.first == 'book ok'
 
