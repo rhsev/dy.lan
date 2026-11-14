@@ -120,6 +120,7 @@ plugins/
 │   ├── 35-milan-connect.rb
 │   ├── 50-simple-redirects.rb
 │   ├── 55-stage.rb          # StageBase + ManageStage instance
+│   ├── 60-jobs.rb           # /jobs/check: ntfy for finished Milan jobs (cron)
 │   ├── 90-maintenance.rb
 │   ├── 91-manage.rb         # Stage instance at /manage
 │   ├── 95-whoami.rb         # milan identity check (?name=, whoami_also_from)
@@ -756,6 +757,7 @@ dy.lan/
 │   │   ├── 35-milan-connect.rb     # Milan-agent forwarding
 │   │   ├── 50-simple-redirects.rb  # YAML-driven redirects
 │   │   ├── 55-stage.rb             # StageBase + all Stage logic
+│   │   ├── 60-jobs.rb              # /jobs/check: ntfy for finished Milan jobs
 │   │   ├── 90-maintenance.rb       # Dashboard, /dylan/*
 │   │   ├── 91-manage.rb            # Stage instance at /manage
 │   │   ├── 95-whoami.rb            # Milan identity check
@@ -1022,7 +1024,7 @@ Use numeric prefixes to control load order:
 35-*.rb              # Milan forwarding (/<agent>/…)
 50-*.rb              # Simple redirects (YAML)
 55-59-*.rb           # Stage instances
-60-*.rb              # Demos and experiments
+60-*.rb              # Job notifications (/jobs/check); demos and experiments
 65-69-*.rb           # Monitoring (monitor, probe)
 70-*.rb              # Custom user plugins
 90-99-*.rb           # Maintenance, /manage, whoami, reload, chaos test

@@ -18,6 +18,12 @@ milan:
   # whoami_also_from:
   #   book: ["192.168.1.10"]
 
+  # Where /jobs/check announces finished background jobs (core/60-jobs.rb).
+  # Without it, jobs are acknowledged without a message.
+  # ntfy:
+  #   url:   "https://ntfy.example.org"
+  #   topic: "jobs"
+
   # Tailscale example:
   # agents:
   #   mini: "http://100.64.1.10:8080"

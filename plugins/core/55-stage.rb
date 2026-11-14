@@ -15,7 +15,6 @@
 #   GET /stage/assets/<f>   → CSS/JS-Assets (gecacht, shared zwischen Instanzen)
 #   GET /stage/sheet/<id>   → Cheat sheet fragment (legacy)
 #   GET /stage/run/<id>     → SSE stream proxy
-#   GET /stage/jobs/check   → Cron hook: notify + ack pending jobs
 #   GET /stage/notes/...    → Notes-Source via Milan
 #   GET /stage/album/<b>    → Album-Seite via Milan (iframe-Dokument)
 #
@@ -27,7 +26,6 @@ require 'yaml'
 require 'cgi'
 require 'json'
 require 'uri'
-require 'net/http'
 require 'time'    # Time.parse in render_jobs_fragment
 require 'digest'  # ETag over the widget states
 
@@ -96,7 +94,10 @@ class StageBase < Dylan::Plugin
     when %r{^/album(?:/(.*))?$}
       handle_album_frame(Regexp.last_match(1).to_s)
     when '/jobs/check'
-      handle_jobs_check
+      # Moved to its own plugin (60-jobs.rb). Said out loud: without this the
+      # old URL would fall through to the index page, and a cron line still
+      # pointing here would succeed every minute while doing nothing.
+      Dylan::Response.error(410, 'Moved: the job check is now GET /jobs/check')
     when '/agents/status'
       Dylan::Response.json(Dylan::Milan.health_check)
     else
@@ -424,37 +425,6 @@ class StageBase < Dylan::Plugin
     end
   end
 
-  # Cron hook: fetch pending jobs from all Milan agents, send ntfy notification, ack.
-  def handle_jobs_check
-    results = []
-
-    Dylan::Milan.agents.each_key do |agent_name|
-      begin
-        body = Dylan::Milan.get(agent_name, '/jobs/pending').body
-        JSON.parse(body.empty? ? '[]' : body).each do |job|
-          script  = job['script']
-          exit_ok = job['exit_ok']
-          job_id  = job['id']
-          icon    = exit_ok ? '✓' : '✗'
-          msg     = "#{icon} #{script} #{exit_ok ? 'completed' : 'failed'} (#{agent_name})"
-
-          # Acknowledged only once the notification is out. A job whose
-          # message failed stays pending and is tried again on the next run.
-          unless notify_ntfy(msg)
-            results << "#{msg} (ntfy failed, job stays pending)"
-            next
-          end
-          Dylan::Milan.get(agent_name, "/jobs/ack/#{URI.encode_www_form_component(job_id.to_s)}") rescue nil
-          results << msg
-        end
-      rescue => e
-        results << "#{agent_name}: error — #{e.message}"
-      end
-    end
-
-    Dylan::Response.text(results.empty? ? 'no pending jobs' : results.join("\n"))
-  end
-
   # Returns HTML fragment with job cards for all Milan agents.
   def handle_jobs_view
     all_jobs = Dylan::Milan.agents.each_key.flat_map do |agent_name|
@@ -646,34 +616,6 @@ class StageBase < Dylan::Plugin
   def panel_refresh(btn)
     seconds = btn['refresh'].to_i
     seconds.positive? ? seconds : WIDGET_REFRESH_DEFAULT
-  end
-
-  # ── Notifications ──────────────────────────────────────────────────────────
-
-  # True when the message went out, or when no ntfy is configured and there is
-  # nothing to send. False when sending failed.
-  def notify_ntfy(msg)
-    cfg = config['ntfy']
-    return true unless cfg&.dig('url') && cfg&.dig('topic')
-    return true if cfg['url'].to_s.strip.empty?
-
-    uri = URI("#{cfg['url'].chomp('/')}/#{cfg['topic']}")
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = (uri.scheme == 'https')
-    http.open_timeout = 4
-    http.read_timeout = 4
-    req = Net::HTTP::Post.new(uri.path.empty? ? '/' : uri.path)
-    req['Title']        = 'Stage Job'
-    req['Content-Type'] = 'text/plain; charset=utf-8'
-    req.body = msg
-    response = http.request(req)
-    return true if response.is_a?(Net::HTTPSuccess)
-
-    warn "[Stage] ntfy: HTTP #{response.code}"
-    false
-  rescue => e
-    warn "[Stage] ntfy: #{e.message}"
-    false
   end
 
   # ── Jobs fragment ──────────────────────────────────────────────────────────
