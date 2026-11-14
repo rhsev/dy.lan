@@ -18,6 +18,14 @@ class ReloadPlugin < Dylan::Plugin
   pattern(%r{^/reload(\?|$)})
 
   def call(host, path, request)
+    # A restart is a plain GET, so an <img> or a fetch on any other site's page
+    # could trigger it. Browsers say where a request comes from; one that a
+    # foreign page embeds is refused. Opening the URL, a link, curl and the
+    # pad's own buttons are not affected.
+    if embedded_by_another_site?(request)
+      return Dylan::Response.error(403, 'Reload refused: request embedded by another site')
+    end
+
     format = parse_query(request)['format']
 
     Thread.new do
@@ -34,6 +42,11 @@ class ReloadPlugin < Dylan::Plugin
   end
 
   private
+
+  def embedded_by_another_site?(request)
+    header = ->(name) { Array(request.headers[name]).flatten.join(',') }
+    header.call('sec-fetch-site') == 'cross-site' && header.call('sec-fetch-mode') != 'navigate'
+  end
 
   def parse_query(request)
     query_string = request.path.split('?', 2)[1] || ''

@@ -54,10 +54,16 @@ if (document.querySelector('.agent-badge')) {
    one-shot fetch for everything else. */
 let panelTimer = null;
 let lastPolledHtml = null;
+// Counts up whenever the panel area changes hands (another panel, an action,
+// a stream). A fetch that was started before the change compares its own
+// number afterwards and drops its answer instead of drawing over the new
+// content or starting a poll for a panel that is no longer shown.
+let panelEpoch = 0;
 
 function stopPanelPolling() {
   if (panelTimer) { clearInterval(panelTimer); panelTimer = null; }
   lastPolledHtml = null;
+  panelEpoch++;
 }
 
 async function fetchPanelFragment(id, cache) {
@@ -71,18 +77,21 @@ async function fetchPanelFragment(id, cache) {
 
 async function loadPanel(btn) {
   const { id, panel: kind, refresh } = btn.dataset;
+  const epoch = panelEpoch;
   let loaded = null;
   try {
     const { ok, html } = await fetchPanelFragment(id, 'no-store');
+    if (epoch !== panelEpoch) return;
     if (!ok) { setPanel(`<div class="output-box error">${esc(html.trim())}</div>`); return; }
     setPanel(html);
     loaded = html;
     if (kind === 'notes') { panel.classList.add('notes-active'); wireNotes(); }
   } catch (e) {
-    setPanel(`<div class="output-box error">${esc(e.message)}</div>`);
+    if (epoch === panelEpoch) setPanel(`<div class="output-box error">${esc(e.message)}</div>`);
   } finally {
     btn.classList.remove('loading');
   }
+  if (epoch !== panelEpoch) return;
 
   // Der gerade geladene Stand wird als Saat übergeben: sonst holt der erste
   // Tick dasselbe Fragment sofort noch einmal und zeichnet es neu.
@@ -96,10 +105,18 @@ async function loadPanel(btn) {
 function startPanelPolling(id, seconds, alwaysRedraw, seedHtml = null) {
   stopPanelPolling();
   lastPolledHtml = seedHtml;
+  const epoch = panelEpoch;
   const tick = async () => {
     try {
       const { ok, html } = await fetchPanelFragment(id, 'no-cache');
-      if (!ok) { setPanel(`<div class="output-box error">${esc(html.trim())}</div>`); return; }
+      if (epoch !== panelEpoch) return;
+      if (!ok) {
+        // Forget the last good fragment: the next good answer is usually the
+        // same one, and it has to replace this error box.
+        lastPolledHtml = null;
+        setPanel(`<div class="output-box error">${esc(html.trim())}</div>`);
+        return;
+      }
       if (!alwaysRedraw) {
         if (html === lastPolledHtml) return;
         lastPolledHtml = html;
@@ -425,9 +442,11 @@ function wireNotes() {
       content.innerHTML = '<div class="notes-loading">Lade…</div>';
       fetch(PREFIX + '/notes/' + encodeURIComponent(item.dataset.source) +
             '/' + encodeURIComponent(item.dataset.file))
-        .then(r => r.text())
-        .then(html => {
-          content.innerHTML = '<div class="sheet-frame">' + html + '</div>';
+        .then(r => r.text().then(text => ({ ok: r.ok, text })))
+        .then(({ ok, text }) => {
+          content.innerHTML = ok
+            ? '<div class="sheet-frame">' + text + '</div>'
+            : '<div class="output-box error">' + esc(text.trim()) + '</div>';
         })
         .catch(e => {
           content.innerHTML = '<div class="output-box error">' + esc(e.message) + '</div>';

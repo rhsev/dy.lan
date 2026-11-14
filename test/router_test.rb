@@ -70,4 +70,18 @@ class RouterTest < Minitest::Test
     assert_equal 503, get('/boom').status
     assert_equal 404, get('/other').status
   end
+
+  # Class-level settings are not inherited by Ruby; an abstract base that sets
+  # a timeout used to leave its subclasses at the default.
+  def test_timeout_is_inherited_from_the_base_class
+    base = Class.new(Dylan::Plugin) { abstract; timeout(5.0) }
+    leaf = Class.new(base)
+    own  = Class.new(base) { timeout(2) }
+    assert_equal 5.0, leaf.timeout
+    assert_equal 5.0, leaf.new.timeout
+    assert_equal 2,   own.timeout
+    assert_equal 0.5, Class.new(Dylan::Plugin).timeout
+  ensure
+    [base, leaf, own].each { Dylan::Plugin.registered_plugins.delete(it) }
+  end
 end

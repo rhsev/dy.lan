@@ -7,7 +7,7 @@ require 'uri'
 # Endpoints:
 #   GET /dylan                 — Redirect zu /manage (Stage-UI)
 #   GET /dylan/routes          — Registrierte Plugins (Markdown, ?format=json)
-#   GET /dylan/test?path=/foo  — Route-Matching prüfen (Markdown, ?format=json)
+#   GET /dylan/test?path=/foo  — Route-Matching prüfen (Markdown, ?format=json, ?host=)
 #       /dylan/test/foo/bar    — alternative Path-Eingabe via URL-Suffix
 #   GET /dylan/stats           — Server-Statistik (Markdown, ?format=json)
 #   GET /dylan/slow[/<ms>]     — Async-Sleep für Performance-Tests (text)
@@ -41,7 +41,7 @@ class MaintenancePlugin < Dylan::Plugin
     when '/dylan/routes'
       handle_routes(request)
     when %r{^/dylan/test}
-      handle_test(request)
+      handle_test(request, host)
     when '/dylan/stats'
       handle_stats(request)
     when %r{^/dylan/slow(?:/(\d+))?$}
@@ -147,7 +147,7 @@ class MaintenancePlugin < Dylan::Plugin
 
   # ── /dylan/test ─────────────────────────────────────────────────────────────
 
-  def handle_test(request)
+  def handle_test(request, host)
     return error_no_router unless @router
 
     query  = parse_query(request)
@@ -167,7 +167,12 @@ class MaintenancePlugin < Dylan::Plugin
     end
     test_path ||= '/'
 
-    matched = @router.plugins.find { |p| p.match?('', test_path) }
+    # Matched under a host, as the router does it: several plugins answer only
+    # for certain hosts (milan-connect, whoami, redirects with a domain list),
+    # and an empty host reported their routes as 404. Default is the host this
+    # request came in under; ?host= tests another one.
+    test_host = query['host'] ? URI.decode_www_form_component(query['host']) : host.to_s
+    matched = @router.plugins.find { |p| p.match?(test_host, test_path) rescue false }
 
     result = if matched
       { matched: true,  path: test_path, plugin: matched.class.name, pattern: matched.pattern.inspect }

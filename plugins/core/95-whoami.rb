@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'uri'
+require 'socket'
 
 # Whoami Plugin — milan agents call this on start to confirm who they are.
 #
@@ -20,6 +21,10 @@ require 'uri'
 # Without a name the agent is looked up by caller address alone, as before —
 # kept for milan binaries that predate ?name=. Behind NAT that answer names
 # the router's agent instead of the caller, which is why milan now sends one.
+#
+# An agent may be listed by name instead of by address (mini: "http://mini:8080").
+# The name is then resolved here, with the resolver Dylan itself uses to reach
+# the agent, and the caller has to come from one of its addresses.
 #
 # Uses Dylan::Milan.agents (cached + hot-reloaded in lib/milan.rb).
 
@@ -52,12 +57,11 @@ class WhoamiPlugin < Dylan::Plugin
     url = Dylan::Milan.agents[name]
     return Dylan::Response.error(404, "Unknown agent: #{name}") unless url
 
-    registered_ip = host_of(url)
-    if registered_ip == caller_ip || also_from(name).include?(caller_ip)
+    if addresses_of(url).include?(caller_ip) || also_from(name).include?(caller_ip)
       return Dylan::Response.text("#{name} (#{caller_ip})")
     end
 
-    message = +"#{name} is registered at #{registered_ip} but called from #{caller_ip}"
+    message = +"#{name} is registered at #{registered_label(url)} but called from #{caller_ip}"
     other = agent_at(caller_ip)
     message << " (registered as #{other})" if other
     Dylan::Response.error(409, message)
@@ -79,7 +83,31 @@ class WhoamiPlugin < Dylan::Plugin
   end
 
   def agent_at(ip)
-    Dylan::Milan.agents.find { |_name, url| host_of(url) == ip }&.first
+    Dylan::Milan.agents.find { |_name, url| addresses_of(url).include?(ip) }&.first
+  end
+
+  IP_LITERAL = /\A(\d{1,3}(\.\d{1,3}){3}|[0-9a-fA-F:]*:[0-9a-fA-F:.]*)\z/
+
+  # The addresses an agent URL stands for: the literal itself, or whatever its
+  # host name resolves to. A name that does not resolve stands for none.
+  def addresses_of(url)
+    host = host_of(url).to_s
+    return [] if host.empty?
+    return [host] if host.match?(IP_LITERAL)
+
+    Addrinfo.getaddrinfo(host, nil, nil, :STREAM).map(&:ip_address).uniq
+  rescue SocketError
+    []
+  end
+
+  # For the refusal message: the configured host, and for a name what it
+  # resolved to — the usual reason for a mismatch is a stale name.
+  def registered_label(url)
+    host = host_of(url).to_s
+    return host if host.match?(IP_LITERAL)
+
+    addresses = addresses_of(url)
+    addresses.empty? ? "#{host} (does not resolve)" : "#{host} (#{addresses.join(', ')})"
   end
 
   def host_of(url)

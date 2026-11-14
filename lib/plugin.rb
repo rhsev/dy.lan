@@ -18,10 +18,13 @@ module Dylan
       end
 
       # Class-level timeout (in seconds)
-      # Default: 0.5s (500ms) - can be overridden per plugin
+      # Default: 0.5s (500ms) - can be overridden per plugin.
+      # A class without its own value takes its parent's: class-level instance
+      # variables are not inherited, so `timeout(5.0)` on an abstract base used
+      # to leave every concrete subclass at the 0.5s default.
       def timeout(seconds = nil)
         @timeout = seconds if seconds
-        @timeout || 0.5
+        @timeout || (equal?(Dylan::Plugin) ? 0.5 : superclass.timeout)
       end
 
       # Optionales YAML im config/-Verzeichnis. Aktiviert Hot-Reload via #config.
@@ -42,7 +45,7 @@ module Dylan
       # Default 5s — Edits werden in wenigen Sekunden sichtbar, FS-Calls bleiben minimal.
       def config_check_interval(seconds = nil)
         @config_check_interval = seconds if seconds
-        @config_check_interval || 5
+        @config_check_interval || (equal?(Dylan::Plugin) ? 5 : superclass.config_check_interval)
       end
 
       # Markiert diese Klasse als abstrakte Basis — der Router lädt sie nicht

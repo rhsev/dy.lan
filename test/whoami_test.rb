@@ -100,6 +100,23 @@ class WhoamiTest < Minitest::Test
                  whoami('/whoami?name=book', from: '192.168.1.50')
   end
 
+  # milan.yaml may list an agent by name; the claim is checked against what
+  # the name resolves to. localhost stands in for a LAN name here.
+  def test_agent_registered_by_host_name
+    Dylan::Milan.stub_agents = { 'mini' => 'http://localhost:8080', 'book' => "http://#{BOOK}:8080" }
+    assert_equal [200, 'mini (127.0.0.1)'], whoami('/whoami?name=mini', from: '127.0.0.1')
+    assert_equal [200, 'mini (127.0.0.1)'], whoami('/whoami', from: '127.0.0.1')
+    status, body = whoami('/whoami?name=mini', from: BOOK)
+    assert_equal 409, status
+    assert_match(/\Amini is registered at localhost \(.*127\.0\.0\.1.*\) but called from #{Regexp.escape(BOOK)} \(registered as book\)\z/, body)
+  end
+
+  def test_agent_name_that_does_not_resolve
+    Dylan::Milan.stub_agents = { 'mini' => 'http://no-such-host.invalid:8080' }
+    assert_equal [409, "mini is registered at no-such-host.invalid (does not resolve) but called from #{MINI}"],
+                 whoami('/whoami?name=mini', from: MINI)
+  end
+
   # Old milan binaries send no name; they keep getting the address lookup.
   def test_without_name_identifies_by_address
     assert_equal [200, "mini (#{MINI})"], whoami('/whoami', from: MINI)

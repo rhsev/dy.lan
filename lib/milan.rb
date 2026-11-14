@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'yaml'
+require 'async'
 require_relative 'http_pool'
 
 module Dylan
@@ -152,6 +153,9 @@ module Dylan
       # Server-Cache mit kurzer TTL — verhindert dass mehrere Browser-Tabs/Polling-Loops
       # Milan überproportional belasten.
       HEALTH_CACHE_TTL = 2  # seconds (low: no polling, only checked on error)
+      # A sleeping Mac does not refuse, it drops silently. Without a limit of
+      # its own, one absent agent used up the caller's whole time budget.
+      HEALTH_TIMEOUT   = 2  # seconds per agent
 
       def health_check
         now = Time.now
@@ -159,9 +163,11 @@ module Dylan
           return @health_cache
         end
 
-        @health_cache = agents.each_with_object({}) do |(name, _url), result|
-          result[name] = check_agent_health(name)
-        end
+        # All agents at once: the answer takes as long as the slowest agent,
+        # not as long as all of them together.
+        names = agents.keys
+        tasks = names.map { |name| Async { check_agent_health(name) } }
+        @health_cache = names.zip(tasks.map(&:wait)).to_h
         @health_cache_at = now
         @health_cache
       end
@@ -169,9 +175,9 @@ module Dylan
       private
 
       def check_agent_health(name)
-        response = get(name, '/health')
+        response = Async::Task.current.with_timeout(HEALTH_TIMEOUT) { get(name, '/health') }
         response.ok? ? 'online' : 'degraded'
-      rescue UnreachableError
+      rescue UnreachableError, Async::TimeoutError
         'offline'
       rescue => e
         warn "[Milan health-check] #{name}: #{e.message}"

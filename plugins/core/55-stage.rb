@@ -186,9 +186,17 @@ class StageBase < Dylan::Plugin
   # the browser (encodeURIComponent). We forward them to Milan as-is — re-encoding
   # would turn "%20" into "%2520" and make files with spaces unreachable.
 
+  # milan answered, but not with what was asked for (unknown source, missing
+  # file, apex failing). Its status and message go out unchanged — a 200 around
+  # an error text would be rendered as if it were the note.
+  def milan_failure(response)
+    Dylan::Response.error(response.status, response.body.strip)
+  end
+
   def handle_note_list(source_id)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
       response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}")
+      next milan_failure(response) unless response.ok?
       Dylan::Response.json(JSON.parse(response.body.empty? ? '[]' : response.body))
     end
   end
@@ -197,6 +205,7 @@ class StageBase < Dylan::Plugin
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
       name = File.basename(filename)  # blockt Path-Traversal in der Datei-Komponente
       response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}/#{name}")
+      next milan_failure(response) unless response.ok?
 
       # Rewrite relative asset paths so browser fetches via Dylan (instance-aware)
       prefix = self.class.url_prefix
@@ -211,6 +220,7 @@ class StageBase < Dylan::Plugin
   def handle_note_asset(source_id, asset_path)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
       response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}/assets/#{asset_path}")
+      next milan_failure(response) unless response.ok?
       ct   = response.headers['content-type'] || 'application/octet-stream'
       body = Protocol::HTTP::Body::Buffered.wrap(response.body)
       Async::HTTP::Protocol::Response[200, { 'content-type' => ct }, body]
@@ -224,6 +234,7 @@ class StageBase < Dylan::Plugin
   def render_notes_panel(source_id)
     Dylan::Milan.rescued(notes_agent, label: 'Notes') do
       response = Dylan::Milan.get(notes_agent, "/notes/#{source_id}")
+      next milan_failure(response) unless response.ok?
       files    = JSON.parse(response.body.empty? ? '[]' : response.body)
       Dylan::Response.html(notes_panel_html(files, source_id))
     end
@@ -272,7 +283,12 @@ class StageBase < Dylan::Plugin
     body   = Protocol::HTTP::Body::Writable.new
 
     Async do
-      html = Dylan::Milan.get(notes_agent, path).body
+      response = Dylan::Milan.get(notes_agent, path)
+      # milan answered with an error (script missing, render failed): its
+      # message goes into the frame as a readable page, not as raw text.
+      next body.write(frame_error_html(label, response.body.strip, reached: true)) unless response.ok?
+
+      html = response.body
       body.write(html.gsub(%r{\b(src|href)="/notes/}) { %(#{$1}="#{prefix}/notes/) })
     rescue => e
       body.write(frame_error_html(label, e.message))
@@ -291,11 +307,11 @@ class StageBase < Dylan::Plugin
 
   # Readable inside the panel, in the panel's own colours, and without a
   # stylesheet request that would have to succeed first.
-  def frame_error_html(label, message)
+  def frame_error_html(label, message, reached: false)
     <<~HTML
       <body style="margin:0;padding:24px;background:#2E3440;color:#D8DEE9;
                    font:13px/1.6 -apple-system,BlinkMacSystemFont,sans-serif">
-        <strong style="color:#BF616A">#{CGI.escape_html(label)} nicht erreichbar</strong>
+        <strong style="color:#BF616A">#{CGI.escape_html(label)} #{reached ? 'meldet einen Fehler' : 'nicht erreichbar'}</strong>
         <p style="margin:.6em 0 0">#{CGI.escape_html(message)}</p>
       </body>
     HTML
@@ -423,8 +439,13 @@ class StageBase < Dylan::Plugin
           icon    = exit_ok ? '✓' : '✗'
           msg     = "#{icon} #{script} #{exit_ok ? 'completed' : 'failed'} (#{agent_name})"
 
-          notify_ntfy(msg)
-          Dylan::Milan.get(agent_name, "/jobs/ack/#{URI.encode_www_form_component(job_id)}") rescue nil
+          # Acknowledged only once the notification is out. A job whose
+          # message failed stays pending and is tried again on the next run.
+          unless notify_ntfy(msg)
+            results << "#{msg} (ntfy failed, job stays pending)"
+            next
+          end
+          Dylan::Milan.get(agent_name, "/jobs/ack/#{URI.encode_www_form_component(job_id.to_s)}") rescue nil
           results << msg
         end
       rescue => e
@@ -630,10 +651,12 @@ class StageBase < Dylan::Plugin
 
   # ── Notifications ──────────────────────────────────────────────────────────
 
+  # True when the message went out, or when no ntfy is configured and there is
+  # nothing to send. False when sending failed.
   def notify_ntfy(msg)
     cfg = config['ntfy']
-    return unless cfg&.dig('url') && cfg&.dig('topic')
-    return if cfg['url'].to_s.strip.empty?
+    return true unless cfg&.dig('url') && cfg&.dig('topic')
+    return true if cfg['url'].to_s.strip.empty?
 
     uri = URI("#{cfg['url'].chomp('/')}/#{cfg['topic']}")
     http = Net::HTTP.new(uri.host, uri.port)
@@ -644,9 +667,14 @@ class StageBase < Dylan::Plugin
     req['Title']        = 'Stage Job'
     req['Content-Type'] = 'text/plain; charset=utf-8'
     req.body = msg
-    http.request(req)
+    response = http.request(req)
+    return true if response.is_a?(Net::HTTPSuccess)
+
+    warn "[Stage] ntfy: HTTP #{response.code}"
+    false
   rescue => e
     warn "[Stage] ntfy: #{e.message}"
+    false
   end
 
   # ── Jobs fragment ──────────────────────────────────────────────────────────

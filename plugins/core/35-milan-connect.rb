@@ -30,6 +30,8 @@ class MilanConnectPlugin < Dylan::Plugin
     agent_name     = parts[1]
     forwarded_path = parts[2] ? "/#{parts[2]}" : '/'
 
+    # milan's status travels with the body: a failed script answers 422 there,
+    # and a 200 here would paint the failure green in the pad.
     Dylan::Milan.rescued(agent_name) do
       response = Dylan::Milan.get(agent_name, forwarded_path)
       ct = response.headers['content-type'].to_s
@@ -41,13 +43,13 @@ class MilanConnectPlugin < Dylan::Plugin
         html = response.body.gsub(%r{\b(src|href)="/(notes/[^"]*)"}) do
           "#{Regexp.last_match(1)}=\"/#{agent_name}/#{Regexp.last_match(2)}\""
         end
-        Dylan::Response.html(html)
+        Dylan::Response.html(html, status: response.status)
       elsif ct.empty? || ct.start_with?('text/')
-        Dylan::Response.text(response.body.strip)
+        Dylan::Response.text(response.body.strip, status: response.status)
       else
         # Binär (Bilder & Co. von der Notes-Route) unverändert durchreichen.
         body = Protocol::HTTP::Body::Buffered.wrap(response.body)
-        Async::HTTP::Protocol::Response[200, { 'content-type' => ct }, body]
+        Async::HTTP::Protocol::Response[response.status, { 'content-type' => ct }, body]
       end
     end
   end
