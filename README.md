@@ -188,6 +188,19 @@ curl -N http://dy.lan/mini/stream/backup
 Milan agents are declared in `config/milan.yaml`. Stage shows agent
 health as live badges and aggregates job logs across all of them.
 
+An agent can have more than one address, for a MacBook that is on WLAN at one
+address and on the cable at another:
+
+```yaml
+agents:
+  mini: "http://192.168.1.10:8080"
+  book: ["http://192.168.1.11:8080", "http://192.168.1.12:8080"]
+```
+
+Dylan sends requests to the first address that accepts a connection and
+checks again every five seconds. An address nobody holds costs one second.
+`/whoami` accepts the agent from any of its addresses.
+
 On start, an agent confirms its name at `/whoami?name=<agent>`
 (`95-whoami.rb`): 200 when the caller's address is the agent's, 409 when the
 claim comes from elsewhere, 404 for an unknown name. `whoami_also_from` in

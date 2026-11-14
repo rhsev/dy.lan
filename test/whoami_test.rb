@@ -83,6 +83,19 @@ class WhoamiTest < Minitest::Test
                  whoami('/whoami?name=book', from: '192.168.1.50', config: cable)
   end
 
+  # An agent listed with two addresses (WLAN and cable) may call from either,
+  # and is found by either when it sends no name.
+  def test_agent_with_two_addresses
+    cable = '192.168.1.12'
+    Dylan::MilanDouble.use(agents: { 'mini' => "http://#{MINI}:8080",
+                                     'book' => ["http://#{BOOK}:8080", "http://#{cable}:8080"] })
+    assert_equal [200, "book (#{BOOK})"], whoami('/whoami?name=book', from: BOOK)
+    assert_equal [200, "book (#{cable})"], whoami('/whoami?name=book', from: cable)
+    assert_equal [200, "book (#{cable})"], whoami('/whoami', from: cable)
+    assert_equal [409, "book is registered at #{BOOK} or #{cable} but called from #{MINI} (registered as mini)"],
+                 whoami('/whoami?name=book', from: MINI)
+  end
+
   # A milan.yaml without the key, or none at all, changes nothing.
   def test_missing_config_keeps_the_strict_check
     assert_equal 409, whoami('/whoami?name=book', from: MINI, config: nil).first

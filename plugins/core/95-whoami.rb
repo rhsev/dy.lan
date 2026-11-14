@@ -22,6 +22,9 @@ require 'socket'
 # kept for milan binaries that predate ?name=. Behind NAT that answer names
 # the router's agent instead of the caller, which is why milan now sends one.
 #
+# An agent listed with several addresses (WLAN and cable) may call from any
+# of them.
+#
 # An agent may be listed by name instead of by address (mini: "http://mini:8080").
 # The name is then resolved here, with the resolver Dylan itself uses to reach
 # the agent, and the caller has to come from one of its addresses.
@@ -54,14 +57,15 @@ class WhoamiPlugin < Dylan::Plugin
     end
     return identify_by_address(caller_ip) unless name
 
-    url = Dylan::Milan.agents[name]
-    return Dylan::Response.error(404, "Unknown agent: #{name}") unless url
+    urls = Dylan::Milan.agent_urls(name)
+    return Dylan::Response.error(404, "Unknown agent: #{name}") if urls.empty?
 
-    if addresses_of(url).include?(caller_ip) || also_from(name).include?(caller_ip)
+    if urls.any? { |url| addresses_of(url).include?(caller_ip) } || also_from(name).include?(caller_ip)
       return Dylan::Response.text("#{name} (#{caller_ip})")
     end
 
-    message = +"#{name} is registered at #{registered_label(url)} but called from #{caller_ip}"
+    registered = urls.map { |url| registered_label(url) }.join(' or ')
+    message = +"#{name} is registered at #{registered} but called from #{caller_ip}"
     other = agent_at(caller_ip)
     message << " (registered as #{other})" if other
     Dylan::Response.error(409, message)
@@ -83,7 +87,9 @@ class WhoamiPlugin < Dylan::Plugin
   end
 
   def agent_at(ip)
-    Dylan::Milan.agents.find { |_name, url| addresses_of(url).include?(ip) }&.first
+    Dylan::Milan.agents.each_key.find do |name|
+      Dylan::Milan.agent_urls(name).any? { |url| addresses_of(url).include?(ip) }
+    end
   end
 
   IP_LITERAL = /\A(\d{1,3}(\.\d{1,3}){3}|[0-9a-fA-F:]*:[0-9a-fA-F:.]*)\z/

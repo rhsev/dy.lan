@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'yaml'
+require 'uri'
+require 'socket'
 require 'async'
 require_relative 'http_pool'
 
@@ -13,11 +15,15 @@ module Dylan
   #     enabled: true
   #     agents:
   #       mini: "http://192.168.1.118:8080"
-  #       book: "http://192.168.1.188:8080"
+  #       book: ["http://192.168.1.188:8080", "http://192.168.1.138:8080"]
+  #
+  # An agent with several addresses (a MacBook on WLAN or on the cable) is
+  # asked at the first one that accepts a connection.
   #
   # API:
-  #   Dylan::Milan.agents                           # => { "mini" => "...", "book" => "..." }
-  #   Dylan::Milan.agent_url("mini")                # => "http://..."
+  #   Dylan::Milan.agents                           # => { "mini" => "...", "book" => [...] }, as configured
+  #   Dylan::Milan.agent_urls("book")               # => ["http://...", "http://..."]
+  #   Dylan::Milan.agent_url("mini")                # => "http://...", the first one
   #   Dylan::Milan.enabled?                         # => true/false
   #   Dylan::Milan.get!(agent, path)                # => Milan::Response (body in memory); raises on non-2xx
   #   Dylan::Milan.post!(agent, path, body)         # => same; the body goes to the script's stdin
@@ -133,9 +139,21 @@ module Dylan
         @config&.dig('agents') || {}
       end
 
-      def agent_url(name)
-        agents[name.to_s]
+      # Every address an agent is listed with, in the order of the config.
+      # One URL or a list of them; an unknown agent has none.
+      def agent_urls(name)
+        Array(agents[name.to_s]).map(&:to_s).reject(&:empty?)
       end
+
+      # The first address. For "is this agent configured?" and for display;
+      # where a request actually goes is decided per call (see current_url).
+      def agent_url(name)
+        agent_urls(name).first
+      end
+
+      # Replaces the connection test, for tests: a callable that takes a URL
+      # and says whether something listens there. nil restores the real one.
+      attr_writer :prober
 
       def enabled?
         load_config
@@ -266,6 +284,7 @@ module Dylan
         @config_loaded_at = nil
         @health_cache = nil
         @health_cache_at = nil
+        @current = nil
         pool.clear!
       end
 
@@ -331,7 +350,10 @@ module Dylan
         new_config['agents'] ||= {}
 
         # Pool leeren, wenn sich Agent-URLs geändert haben
-        pool.clear! if @config && @config['agents'] != new_config['agents']
+        if @config && @config['agents'] != new_config['agents']
+          pool.clear!
+          @current = nil
+        end
 
         @config = new_config
         @config_loaded_at = Time.now
@@ -342,8 +364,49 @@ module Dylan
       end
 
       def client_for(name)
-        url = agent_url(name) or raise UnknownAgentError.new(name)
-        pool.for(url)
+        pool.for(current_url(name))
+      end
+
+      # How long an answer to "which address?" is trusted, and how long one
+      # address gets to accept a connection. On the LAN a connect takes a
+      # millisecond; an address nobody holds answers with silence.
+      CURRENT_TTL     = 5  # seconds
+      CONNECT_TIMEOUT = 1  # seconds
+
+      # Where a request to this agent goes. With one address: there, untested,
+      # as always. With several: the address used last if it still accepts a
+      # connection, else the next one that does. The test is repeated every
+      # CURRENT_TTL seconds, because a kept-alive connection to an address the
+      # agent has left does not fail, it hangs.
+      def current_url(name)
+        urls = agent_urls(name)
+        raise UnknownAgentError.new(name) if urls.empty?
+        return urls.first if urls.size == 1
+
+        @current ||= {}
+        url, checked_at = @current[name.to_s]
+        return url if url && urls.include?(url) && Time.now - checked_at < CURRENT_TTL
+
+        candidates = urls.include?(url) ? [url] + (urls - [url]) : urls
+        found = candidates.find { |candidate| listening?(candidate) }
+        unless found
+          @current.delete(name.to_s)
+          raise UnreachableError.new(name, "no answer at #{urls.join(' or ')}")
+        end
+
+        warn "[Milan] #{name} is now at #{found}" if url && url != found
+        @current[name.to_s] = [found, Time.now]
+        found
+      end
+
+      def listening?(url)
+        return @prober.call(url) if @prober
+
+        uri = URI(url)
+        Socket.tcp(uri.host, uri.port, connect_timeout: CONNECT_TIMEOUT).close
+        true
+      rescue SystemCallError, SocketError, IOError, URI::InvalidURIError
+        false
       end
     end
   end
