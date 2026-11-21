@@ -243,8 +243,23 @@ class MaintenancePlugin < Dylan::Plugin
       errors_by_plugin:   @router.stats[:errors_by_plugin],
       disabled_plugins:   @router.disabled_plugins.to_a,
       plugin_count:       @router.route_count,
-      started_at:         @router.stats[:started_at].iso8601
+      started_at:         @router.stats[:started_at].iso8601,
+      ruby:               RUBY_VERSION,
+      rss_kb:             rss_kb,
+      heap_pages:         GC.stat(:heap_allocated_pages)
     }
+  end
+
+  # Resident memory of this process in kB, as the kernel counts it. Read from
+  # /proc, so nil anywhere but Linux. Next to heap_pages it tells growth of
+  # Ruby's own object heap from growth outside it (malloc, fragmentation).
+  def rss_kb
+    File.foreach('/proc/self/status') do |line|
+      return line[/\d+/].to_i if line.start_with?('VmRSS:')
+    end
+    nil
+  rescue SystemCallError
+    nil
   end
 
   def render_stats_markdown(stats)
@@ -258,7 +273,9 @@ class MaintenancePlugin < Dylan::Plugin
 
     out << "- Uptime:             #{stats[:uptime_human]}\n"
     out << "- Total requests:     #{stats[:total_requests]}\n"
-    out << "- Registered plugins: #{stats[:plugin_count]}\n\n"
+    out << "- Registered plugins: #{stats[:plugin_count]}\n"
+    out << "- Memory:             #{(stats[:rss_kb] / 1024.0).round(1)} MB\n" if stats[:rss_kb]
+    out << "\n"
 
     if stats[:requests_by_plugin].empty?
       out << "(no requests yet)\n"
