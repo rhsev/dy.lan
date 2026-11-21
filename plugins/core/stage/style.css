@@ -701,7 +701,18 @@ body.no-sidebar .menu-toggle { display: none; }
 
   /* Notes-Split-View auf Mobile: Liste statt Two-Column */
   .notes-layout    { flex-direction: column; }
-  .notes-nav       { width: auto; max-height: 140px; border-right: none;
+  .notes-nav       { width: auto; flex: 1 1 auto; border-right: none;
                      border-bottom: 1px solid var(--n3); }
   .notes-content   { padding: 14px 16px; }
+
+  /* Without a chosen file, and while the list is reopened, the list takes
+     the whole panel. With a file open it folds down to the active entry;
+     a tap on that entry reopens it (wireNotes in app.js). */
+  .notes-layout:not(.has-note) .notes-content,
+  .notes-layout.nav-open .notes-content { display: none; }
+  .notes-layout.has-note:not(.nav-open) .notes-nav { flex: 0 0 auto; }
+  .notes-layout.has-note:not(.nav-open) .note-item:not(.active) { display: none; }
+  .notes-layout.has-note:not(.nav-open) .note-item.active::after {
+    content: "\25BE"; float: right; color: var(--n4);
+  }
 }

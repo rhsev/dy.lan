@@ -435,6 +435,16 @@ function wireNotes() {
   if (!nav) return;
   nav.querySelectorAll('.note-item').forEach(item => {
     item.addEventListener('click', () => {
+      // Mobile: the list is folded down to the active entry while a file is
+      // shown. A tap on that entry reopens the list and loads nothing.
+      const layout = nav.closest('.notes-layout');
+      if (isMobile() && item.classList.contains('active') &&
+          layout.classList.contains('has-note') && !layout.classList.contains('nav-open')) {
+        layout.classList.add('nav-open');
+        return;
+      }
+      layout.classList.add('has-note');
+      layout.classList.remove('nav-open');
       nav.querySelectorAll('.note-item').forEach(i => i.classList.remove('active'));
       item.classList.add('active');
       const content = document.getElementById('notes-content');
